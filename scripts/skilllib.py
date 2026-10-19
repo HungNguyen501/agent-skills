@@ -24,14 +24,19 @@ class Skill:
         return str(self.meta.get("name", ""))
 
     @property
-    def always(self) -> bool:
-        return str((self.meta.get("metadata") or {}).get("always", "false")).lower() == "true"
+    def custom(self) -> dict:
+        """The metadata: mapping, or {} when it is absent or not a mapping (validate.py reports that)."""
+        value = self.meta.get("metadata")
+        return value if isinstance(value, dict) else {}
 
+    @property
+    def always(self) -> bool:
+        return str(self.custom.get("always", "false")).lower() == "true"
 
     @property
     def order(self) -> int:
         """Prompt load order for consumers that concatenate skills; lower loads first."""
-        return int((self.meta.get("metadata") or {}).get("order", 1000))
+        return int(self.custom.get("order", 1000))
 
 
 def estimate_tokens(text: str) -> int:
@@ -58,7 +63,10 @@ def split_frontmatter(text: str) -> tuple[str, str]:
 def parse_skill_md(text: str) -> tuple[dict, str]:
     """Split a SKILL.md into (frontmatter dict, body). Raises ValueError on malformed frontmatter."""
     front, body = split_frontmatter(text)
-    meta = yaml.safe_load(front)
+    try:
+        meta = yaml.safe_load(front)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid YAML frontmatter: {exc}") from exc
     if not isinstance(meta, dict):
         raise ValueError("frontmatter is not a mapping")
     return meta, body.lstrip("\n")

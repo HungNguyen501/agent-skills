@@ -49,7 +49,13 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
 
 def _parse(text: str) -> tuple[dict, str]:
     front, body = _split_frontmatter(text)
-    return yaml.safe_load(front) or {}, body.strip()
+    try:
+        meta = yaml.safe_load(front) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"invalid YAML frontmatter: {exc}") from exc
+    if not isinstance(meta, dict):
+        raise ValueError("frontmatter is not a mapping")
+    return meta, body.strip()
 
 
 def discover(
@@ -59,23 +65,30 @@ def discover(
     """Load skills from one or more directories.
 
     `allow` restricts routed skills to a per-consumer allowlist; always-on skills are never filtered.
-    A name that appears in two directories raises ValueError, so a local skill cannot silently shadow a hub skill.
+    A name that appears in two places raises ValueError whether or not the allowlist would keep it,
+    so a local skill can never silently shadow a hub skill. Malformed skills raise ValueError naming the file.
     """
     dirs = [skills_dirs] if isinstance(skills_dirs, (str, Path)) else list(skills_dirs)
+    seen: dict[str, Path] = {}
     found: dict[str, Skill] = {}
     for skills_dir in dirs:
         for md in sorted(Path(skills_dir).glob("*/SKILL.md")):
-            meta, body = _parse(md.read_text(encoding="utf-8"))
-            name = meta["name"]
-            if name in found:
-                raise ValueError(f"duplicate skill name '{name}': {found[name].path} and {md.parent}")
-            md_meta = meta.get("metadata") or {}
-            always = str(md_meta.get("always", "false")).lower() == "true"
+            try:
+                meta, body = _parse(md.read_text(encoding="utf-8"))
+                name = meta.get("name")
+                if not isinstance(name, str) or not name:
+                    raise ValueError(f"name must be a non-empty string, got {name!r}")
+                md_meta = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
+                always = str(md_meta.get("always", "false")).lower() == "true"
+                order = int(md_meta.get("order", 1000))
+            except (ValueError, OSError) as exc:
+                raise ValueError(f"{md}: {exc}") from exc
+            if name in seen:
+                raise ValueError(f"duplicate skill name '{name}': {seen[name]} and {md.parent}")
+            seen[name] = md.parent
             if allow is not None and name not in allow and not always:
                 continue
-            found[name] = Skill(
-                name, meta.get("description", ""), always, int(md_meta.get("order", 1000)), body, md.parent
-            )
+            found[name] = Skill(name, str(meta.get("description", "")), always, order, body, md.parent)
     return dict(sorted(found.items(), key=lambda kv: (kv[1].order, kv[0])))
 
 
@@ -105,10 +118,15 @@ def read_skill_file(skills: dict[str, Skill], name: str, path: str) -> str:
     if skill is None:
         return f"Unknown skill '{name}'."
     root = skill.path.resolve()
-    target = (root / path).resolve()
-    if not target.is_relative_to(root) or not target.is_file():
-        return f"File '{path}' not found in skill '{name}'."
-    return target.read_text(encoding="utf-8")
+    try:
+        target = (root / path).resolve()
+        if not target.is_relative_to(root) or not target.is_file():
+            return f"File '{path}' not found in skill '{name}'."
+        return target.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return f"File '{path}' in skill '{name}' is not UTF-8 text and cannot be read."
+    except (OSError, ValueError) as exc:
+        return f"File '{path}' in skill '{name}' could not be read: {exc.__class__.__name__}."
 
 
 TOOL_SCHEMAS = [

@@ -4,6 +4,7 @@ Central hub of agent skills. Source of truth is `skills/<domain>/<skill>/`. Read
 
 ## Commands
 
+- `uv run python -m unittest discover -s tests` runs the regression tests for scripts and the loader.
 - `uv run python scripts/validate.py` checks all skills under `skills/`.
 - `uv run python scripts/build.py` regenerates `plugins/`, `.claude-plugin/marketplace.json` and `manifest.json`. `--check` verifies only.
 

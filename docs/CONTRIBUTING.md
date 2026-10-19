@@ -7,8 +7,11 @@ Read the skill [writing-agent-skills](../skills/authoring/writing-agent-skills/S
 ```bash
 git clone --recurse-submodules <repo-url>
 uv sync
+uv run python -m unittest discover -s tests
 uv run python scripts/validate.py
 ```
+
+Add a regression test in `tests/test_hub.py` for any bug fixed in `scripts/` or `runtimes/`.
 
 ## Add a skill
 

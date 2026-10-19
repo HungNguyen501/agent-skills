@@ -2,6 +2,7 @@
 
 Rules come from docs/CONTRIBUTING.md and skills/authoring/writing-agent-skills.
 vendor/ is never scanned: third-party skills are not held to hub rules.
+Malformed input must produce findings for that skill and never stop the run.
 """
 from __future__ import annotations
 
@@ -24,40 +25,54 @@ MIN_EVALS = 3
 Findings = tuple[list[str], list[str]]  # (errors, warnings)
 
 
+def _rel(path: Path) -> Path:
+    """Path relative to the repo root for messages; the path itself when it is elsewhere."""
+    try:
+        return path.relative_to(skilllib.ROOT)
+    except ValueError:
+        return path
+
+
 def _local_links(text: str) -> list[str]:
     return [m for m in MD_LINK_RE.findall(text) if "://" not in m and not m.startswith("mailto:")]
 
 
 def check_name(skill: Skill, rel: Path, seen: dict[str, Path]) -> list[str]:
-    errors: list[str] = []
-    name = skill.name
-    if not name:
+    raw = skill.meta.get("name")
+    if raw is None or raw == "":
         return [f"{rel}: missing name"]
-    if len(name) > 64 or not NAME_RE.match(name):
-        errors.append(f"{rel}: name '{name}' must be <=64 chars, lowercase letters/digits/hyphens")
-    if any(word in name for word in RESERVED):
-        errors.append(f"{rel}: name '{name}' contains a reserved word")
-    if name != skill.path.name:
-        errors.append(f"{rel}: name '{name}' must equal directory name '{skill.path.name}'")
-    if name in seen:
-        errors.append(f"{rel}: name '{name}' already used by {seen[name].relative_to(skilllib.ROOT)}")
-    seen.setdefault(name, skill.path)
+    if not isinstance(raw, str):
+        return [f"{rel}: name must be a string, got {type(raw).__name__} ({raw!r}); quote it"]
+    errors: list[str] = []
+    if len(raw) > 64 or not NAME_RE.match(raw):
+        errors.append(f"{rel}: name '{raw}' must be <=64 chars, lowercase letters/digits/hyphens")
+    if any(word in raw for word in RESERVED):
+        errors.append(f"{rel}: name '{raw}' contains a reserved word")
+    if raw != skill.path.name:
+        errors.append(f"{rel}: name '{raw}' must equal directory name '{skill.path.name}'")
+    if raw in seen:
+        errors.append(f"{rel}: name '{raw}' already used by {_rel(seen[raw])}")
+    seen.setdefault(raw, skill.path)
     return errors
 
 
 def check_description(skill: Skill, rel: Path) -> Findings:
+    raw = skill.meta.get("description")
+    if raw is None or raw == "":
+        return [f"{rel}: description is empty"], []
+    if not isinstance(raw, str):
+        return [f"{rel}: description must be a string, got {type(raw).__name__}; quote it"], []
     errors: list[str] = []
     warnings: list[str] = []
-    desc = str(skill.meta.get("description", ""))
-    if not desc.strip():
+    if not raw.strip():
         errors.append(f"{rel}: description is empty")
-    if len(desc) > 1024:
-        errors.append(f"{rel}: description is {len(desc)} chars (max 1024)")
-    if XML_TAG_RE.search(desc) or XML_TAG_RE.search(skill.name):
+    if len(raw) > 1024:
+        errors.append(f"{rel}: description is {len(raw)} chars (max 1024)")
+    if XML_TAG_RE.search(raw) or XML_TAG_RE.search(str(skill.meta.get("name", ""))):
         errors.append(f"{rel}: name/description must not contain XML tags")
-    if FIRST_PERSON_RE.search(desc):
+    if FIRST_PERSON_RE.search(raw):
         errors.append(f"{rel}: description must be third person")
-    if "use when" not in desc.lower():
+    if "use when" not in raw.lower():
         warnings.append(f"{rel}: description should say when to use the skill ('Use when ...')")
     return errors, warnings
 
@@ -65,9 +80,13 @@ def check_description(skill: Skill, rel: Path) -> Findings:
 def check_metadata(skill: Skill, rel: Path) -> list[str]:
     errors = [
         f"{rel}: unknown frontmatter key '{key}' (custom keys go under metadata:)"
-        for key in sorted(set(skill.meta) - KNOWN_KEYS)
+        for key in sorted(set(skill.meta) - KNOWN_KEYS, key=str)
     ]
-    metadata = skill.meta.get("metadata") or {}
+    metadata = skill.meta.get("metadata")
+    if metadata is None:
+        return errors
+    if not isinstance(metadata, dict):
+        return errors + [f"{rel}: metadata must be a mapping, got {type(metadata).__name__}"]
     errors += [f"{rel}: metadata.{key} must be a string (quote it)" for key, value in metadata.items() if not isinstance(value, str)]
     order = metadata.get("order")
     if order is not None and not str(order).isdigit():
@@ -86,28 +105,39 @@ def check_size(skill: Skill, rel: Path) -> list[str]:
     return errors
 
 
-def check_references(skill: Skill, rel: Path) -> Findings:
-    """Links resolve, references are one level deep, long files have a contents list."""
+def _check_links(text: str, base: Path, root: Path, label: Path) -> tuple[list[str], set[Path]]:
+    """Check local links resolved from `base`: forward slashes, inside the skill directory, and existing."""
     errors: list[str] = []
+    resolved: set[Path] = set()
+    for link in _local_links(text):
+        if "\\" in link:
+            errors.append(f"{label}: use forward slashes in paths ('{link}')")
+            continue
+        target = (base / link).resolve()
+        resolved.add(target)
+        if not target.is_relative_to(root):
+            errors.append(f"{label}: link '{link}' points outside the skill directory, so it will be missing once packaged")
+        elif not target.exists():
+            errors.append(f"{label}: links to missing file '{link}'")
+    return errors, resolved
+
+
+def check_references(skill: Skill, rel: Path) -> Findings:
+    """Links resolve inside the skill, references are one level deep, long files have a contents list."""
+    root = skill.path.resolve()
+    errors, linked = _check_links(skill.body, root, root, rel / "SKILL.md")
     warnings: list[str] = []
-    links = _local_links(skill.body)
-    if any("\\" in link for link in links):
-        errors.append(f"{rel}: use forward slashes in paths")
-    linked = set()
-    for link in links:
-        target = (skill.path / link).resolve()
-        linked.add(target)
-        if not target.exists():
-            errors.append(f"{rel}: SKILL.md links to missing file '{link}'")
 
     refs_dir = skill.path / "references"
     for ref in sorted(refs_dir.glob("**/*.md")) if refs_dir.is_dir() else []:
-        ref_rel = ref.relative_to(skilllib.ROOT)
+        ref_rel = _rel(ref)
         ref_text = ref.read_text(encoding="utf-8")
         if ref.resolve() not in linked:
             warnings.append(f"{ref_rel}: not linked from SKILL.md")
         if len(ref_text.splitlines()) > 100 and not re.search(r"^## Contents\b", ref_text, re.MULTILINE):
             errors.append(f"{ref_rel}: over 100 lines, needs a '## Contents' section")
+        link_errors, _ = _check_links(ref_text, ref.parent.resolve(), root, ref_rel)
+        errors += link_errors
         errors += [
             f"{ref_rel}: links to '{link}'; references must be one level deep"
             for link in _local_links(ref_text)
@@ -122,24 +152,25 @@ def check_evals(skill: Skill, rel: Path) -> list[str]:
         return [f"{rel}: missing evals/evals.json"]
     try:
         cases = json.loads(evals_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return [f"{rel}: evals/evals.json is invalid JSON: {exc}"]
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        return [f"{rel}: evals/evals.json is invalid: {exc}"]
     if not isinstance(cases, list) or len(cases) < MIN_EVALS:
         return [f"{rel}: evals/evals.json needs at least {MIN_EVALS} cases"]
-    return [
-        f"{rel}: eval #{i} missing '{key}'"
-        for i, case in enumerate(cases)
-        for key in ("id", "query", "expected_behavior")
-        if not case.get(key)
-    ]
+    errors: list[str] = []
+    for i, case in enumerate(cases):
+        if not isinstance(case, dict):
+            errors.append(f"{rel}: eval #{i} must be an object, got {type(case).__name__}")
+            continue
+        errors += [f"{rel}: eval #{i} missing '{key}'" for key in ("id", "query", "expected_behavior") if not case.get(key)]
+    return errors
 
 
 def check_skill(skill_dir: Path, seen: dict[str, Path]) -> Findings:
-    """Run every validator for one skill and aggregate their findings."""
-    rel = skill_dir.relative_to(skilllib.ROOT)
+    """Run every validator for one skill and aggregate their findings. Never raises on bad skill input."""
+    rel = _rel(skill_dir)
     try:
         skill = skilllib.load(skill_dir)
-    except ValueError as exc:
+    except (ValueError, OSError) as exc:
         return [f"{rel}/SKILL.md: {exc}"], []
 
     desc_errors, desc_warnings = check_description(skill, rel)
