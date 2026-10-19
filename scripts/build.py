@@ -20,57 +20,52 @@ OUTPUTS = ("plugins", ".claude-plugin", "manifest.json")
 META = json.loads((ROOT / "hub.json").read_text(encoding="utf-8"))
 
 
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+
+def write_plugin_manifest(out: Path, domain: str, description: str) -> dict:
+    """Write plugins/<domain>/.claude-plugin/plugin.json and return the marketplace entry."""
+    _write_json(
+        out / "plugins" / domain / ".claude-plugin" / "plugin.json",
+        {"name": domain, "description": description, "version": META["version"], "license": META["license"]},
+    )
+    return {"name": domain, "source": f"./plugins/{domain}", "description": description}
+
+
+def package_skill(out: Path, skill: skilllib.Skill) -> None:
+    """Copy a skill into its domain plugin, leaving out evals and caches."""
+    dest = out / "plugins" / skill.domain / "skills" / skill.path.name
+    shutil.copytree(skill.path, dest, ignore=shutil.ignore_patterns("evals", "__pycache__"))
+
+
+def manifest_entry(skill: skilllib.Skill) -> dict:
+    return {
+        "name": skill.name,
+        "domain": skill.domain,
+        "description": skill.meta["description"],
+        "always": skill.always,
+        "order": skill.order,
+        "path": f"skills/{skill.domain}/{skill.path.name}",
+        "tokens": skilllib.estimate_tokens(skill.body),
+    }
+
+
 def generate(out: Path) -> None:
+    """Coordinate the build: per-domain plugins, packaged skills, marketplace and manifest."""
     domains = json.loads((skilllib.SKILLS_DIR / "domains.json").read_text(encoding="utf-8"))
     skills = [skilllib.load(p) for p in skilllib.discover()]
 
-    manifest = []
-    plugins = []
-    for domain in sorted({s.domain for s in skills}):
-        plugin_dir = out / "plugins" / domain
-        (plugin_dir / ".claude-plugin").mkdir(parents=True)
-        (plugin_dir / ".claude-plugin" / "plugin.json").write_text(
-            json.dumps(
-                {
-                    "name": domain,
-                    "description": domains[domain],
-                    "version": META["version"],
-                    "license": META["license"],
-                },
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        plugins.append({"name": domain, "source": f"./plugins/{domain}", "description": domains[domain]})
-
+    plugins = [write_plugin_manifest(out, d, domains[d]) for d in sorted({s.domain for s in skills})]
     for skill in skills:
-        dest = out / "plugins" / skill.domain / "skills" / skill.path.name
-        shutil.copytree(skill.path, dest, ignore=shutil.ignore_patterns("evals", "__pycache__"))
-        manifest.append(
-            {
-                "name": skill.name,
-                "domain": skill.domain,
-                "description": skill.meta["description"],
-                "always": skill.always,
-                "order": skill.order,
-                "path": f"skills/{skill.domain}/{skill.path.name}",
-                "tokens": skilllib.estimate_tokens(skill.body),
-            }
-        )
+        package_skill(out, skill)
 
-    (out / ".claude-plugin").mkdir(exist_ok=True)
-    (out / ".claude-plugin" / "marketplace.json").write_text(
-        json.dumps(
-            {"name": META["name"], "owner": {"name": META["owner"]}, "plugins": plugins},
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
+    _write_json(
+        out / ".claude-plugin" / "marketplace.json",
+        {"name": META["name"], "owner": {"name": META["owner"]}, "plugins": plugins},
     )
-    (out / "manifest.json").write_text(
-        json.dumps({"version": META["version"], "skills": manifest}, indent=2) + "\n", encoding="utf-8"
-    )
+    _write_json(out / "manifest.json", {"version": META["version"], "skills": [manifest_entry(s) for s in skills]})
 
 
 def _same(a: Path, b: Path) -> bool:

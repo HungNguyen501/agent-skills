@@ -32,10 +32,23 @@ class Skill:
     path: Path
 
 
-def _parse(text: str) -> tuple[dict, str]:
-    if not text.startswith("---\n"):
+def _split_frontmatter(text: str) -> tuple[str, str]:
+    """Split at standalone `---` lines; a `---` inside a value is not a delimiter.
+
+    Keep this identical to `split_frontmatter` in scripts/skilllib.py. This file is copied into
+    consumers, so it cannot import that module.
+    """
+    lines = text.split("\n")
+    if lines[0].rstrip() != "---":
         raise ValueError("missing frontmatter")
-    _, front, body = text.split("---\n", 2)
+    for i in range(1, len(lines)):
+        if lines[i].rstrip() == "---":
+            return "\n".join(lines[1:i]), "\n".join(lines[i + 1 :])
+    raise ValueError("unterminated frontmatter")
+
+
+def _parse(text: str) -> tuple[dict, str]:
+    front, body = _split_frontmatter(text)
     return yaml.safe_load(front) or {}, body.strip()
 
 

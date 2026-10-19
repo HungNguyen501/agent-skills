@@ -39,17 +39,29 @@ def estimate_tokens(text: str) -> int:
     return len(text) // 4
 
 
+def split_frontmatter(text: str) -> tuple[str, str]:
+    """Split text into (frontmatter, body) at standalone `---` lines.
+
+    A `---` inside a value (for example `description: a --- b`) is not a delimiter.
+    Keep this identical to `_split_frontmatter` in runtimes/python/loader.py, which is copied
+    into consumers and so cannot import this module.
+    """
+    lines = text.split("\n")
+    if lines[0].rstrip() != "---":
+        raise ValueError("missing YAML frontmatter")
+    for i in range(1, len(lines)):
+        if lines[i].rstrip() == "---":
+            return "\n".join(lines[1:i]), "\n".join(lines[i + 1 :])
+    raise ValueError("unterminated YAML frontmatter")
+
+
 def parse_skill_md(text: str) -> tuple[dict, str]:
     """Split a SKILL.md into (frontmatter dict, body). Raises ValueError on malformed frontmatter."""
-    if not text.startswith("---\n"):
-        raise ValueError("missing YAML frontmatter")
-    parts = text.split("---\n", 2)
-    if len(parts) != 3:
-        raise ValueError("unterminated YAML frontmatter")
-    meta = yaml.safe_load(parts[1])
+    front, body = split_frontmatter(text)
+    meta = yaml.safe_load(front)
     if not isinstance(meta, dict):
         raise ValueError("frontmatter is not a mapping")
-    return meta, parts[2].lstrip("\n")
+    return meta, body.lstrip("\n")
 
 
 def discover(skills_dir: Path = SKILLS_DIR) -> list[Path]:

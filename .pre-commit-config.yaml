@@ -12,4 +12,4 @@ repos:
         entry: uv run python scripts/build.py --check
         language: system
         pass_filenames: false
-        files: ^(skills/|scripts/|hub\.json)
+        files: ^(skills/|scripts/|hub\.json$|plugins/|\.claude-plugin/|manifest\.json$)
