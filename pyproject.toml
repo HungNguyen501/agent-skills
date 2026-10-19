@@ -1,0 +1,9 @@
+[project]
+name = "agent-skills-hub"
+version = "0.1.0"
+description = "Central hub of agent skills: validation and build tooling."
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6.0"]
+
+[tool.uv]
+package = false

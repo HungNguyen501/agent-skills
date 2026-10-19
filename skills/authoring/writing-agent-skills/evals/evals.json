@@ -1,0 +1,45 @@
+[
+  {
+    "id": "new-skill-from-scratch",
+    "skills": ["writing-agent-skills"],
+    "query": "I want to add a skill that teaches agents how to query our billing tables. Where do I start?",
+    "files": [],
+    "expected_behavior": [
+      "Classifies the idea as a preference or capability skill before drafting",
+      "Asks for or gathers real material (queries, schemas, incidents) instead of writing from general knowledge",
+      "Proposes writing at least three evals and a baseline run before the body"
+    ]
+  },
+  {
+    "id": "review-bad-description",
+    "skills": ["writing-agent-skills"],
+    "query": "Review this frontmatter: name: Claude Billing Helper / description: I can help you with data stuff",
+    "files": [],
+    "expected_behavior": [
+      "Flags the uppercase and spaces in name and the reserved word 'claude'",
+      "Flags the first-person, vague description",
+      "Proposes a third-person description that states what, when, and when not"
+    ]
+  },
+  {
+    "id": "oversized-skill",
+    "skills": ["writing-agent-skills"],
+    "query": "My SKILL.md is 900 lines and links to a reference that links to another reference. How do I fix it?",
+    "files": [],
+    "expected_behavior": [
+      "Says to get SKILL.md under 500 lines and about 5,000 tokens",
+      "Says references must be one level deep from SKILL.md and gated by a trigger",
+      "Suggests moving mechanical steps into scripts"
+    ]
+  },
+  {
+    "id": "red-herring-system-prompt",
+    "skills": ["writing-agent-skills"],
+    "query": "Write the system prompt persona for my support bot.",
+    "files": [],
+    "expected_behavior": [
+      "Does not apply the skill-authoring workflow",
+      "Treats this as system prompt writing, not skill writing"
+    ]
+  }
+]

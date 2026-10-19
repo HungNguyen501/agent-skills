@@ -1,0 +1,49 @@
+[
+  {
+    "id": "downstream",
+    "skills": [
+      "system-tables-lineage"
+    ],
+    "query": "What is downstream of acme_com.sales.orders?",
+    "files": [],
+    "expected_behavior": [
+      "Queries system.access.table_lineage on source_table_full_name",
+      "Applies the 180-day event_time filter and the full catalog and schema scope filter",
+      "Uses DISTINCT or GROUP BY on the relationships"
+    ]
+  },
+  {
+    "id": "count-upstream",
+    "skills": [
+      "system-tables-lineage"
+    ],
+    "query": "How many tables feed acme_com.sales.orders?",
+    "files": [],
+    "expected_behavior": [
+      "Counts distinct source tables, not raw lineage rows"
+    ]
+  },
+  {
+    "id": "writers",
+    "skills": [
+      "system-tables-lineage"
+    ],
+    "query": "Which jobs write to acme_com.sales.orders?",
+    "files": [],
+    "expected_behavior": [
+      "Filters entity_type for JOB and target_table_full_name"
+    ]
+  },
+  {
+    "id": "red-herring-columns",
+    "skills": [
+      "system-tables-lineage"
+    ],
+    "query": "What columns does acme_com.sales.orders have?",
+    "files": [],
+    "expected_behavior": [
+      "Does not use the lineage table",
+      "Uses information_schema.columns (system-tables-metadata)"
+    ]
+  }
+]

@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# agent-skills hub
+.claude/settings.local.json
+.DS_Store

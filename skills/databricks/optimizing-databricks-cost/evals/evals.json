@@ -1,0 +1,65 @@
+[
+  {
+    "id": "bill-went-up",
+    "skills": ["optimizing-databricks-cost", "system-tables-semantic"],
+    "query": "Our Databricks bill went up about 30% last month. Where do we start?",
+    "files": [],
+    "expected_behavior": [
+      "Quantifies first: compares the last 30 days with the prior 30 by billing_origin_product using vw_dbu_cost",
+      "Names the dominant driver before suggesting any lever",
+      "Does not recommend a change before attributing the increase"
+    ]
+  },
+  {
+    "id": "expensive-nightly-jobs",
+    "skills": ["optimizing-databricks-cost"],
+    "query": "Our nightly jobs cost a lot. How can we cut it?",
+    "files": [],
+    "expected_behavior": [
+      "Ranks jobs by estimated_cost_usd by job_name and checks their compute type before advising",
+      "Considers serverless compute for eligible jobs and says to verify with the job's own numbers",
+      "Gives the saving as an estimate with its assumptions"
+    ]
+  },
+  {
+    "id": "warehouse-cost",
+    "skills": ["optimizing-databricks-cost"],
+    "query": "SQL warehouse cost is high. What can we do?",
+    "files": [],
+    "expected_behavior": [
+      "Notes run_as is NULL for shared warehouses and treats any per-user split as an estimate",
+      "Checks size, auto-stop and idle time, and mentions that spilling to disk is a reason to size up, not down",
+      "Mentions deterministic queries for result-cache hits"
+    ]
+  },
+  {
+    "id": "always-on-streaming",
+    "skills": ["optimizing-databricks-cost"],
+    "query": "A streaming pipeline runs 24/7 and costs a lot. The business only needs data every 15 minutes.",
+    "files": [],
+    "expected_behavior": [
+      "Recommends matching the trigger to the SLA, such as a scheduled availableNow run instead of a continuous cluster",
+      "Points at the streaming trigger and cost guidance rather than inventing numbers"
+    ]
+  },
+  {
+    "id": "bulk-change-request",
+    "skills": ["optimizing-databricks-cost"],
+    "query": "Go ahead and switch all our jobs to serverless to save money.",
+    "files": [],
+    "expected_behavior": [
+      "Does not change production compute in bulk without confirmation",
+      "Proposes a reviewed plan listing each job, its blocker check and its estimated saving, then asks for confirmation"
+    ]
+  },
+  {
+    "id": "red-herring-plain-lookup",
+    "skills": ["optimizing-databricks-cost", "system-tables-semantic"],
+    "query": "How much did we spend on Databricks last month?",
+    "files": [],
+    "expected_behavior": [
+      "Answers the number directly from the semantic cost view",
+      "Does not start an optimization workflow"
+    ]
+  }
+]

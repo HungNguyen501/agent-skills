@@ -1,0 +1,49 @@
+[
+  {
+    "id": "list-tables",
+    "skills": [
+      "system-tables-metadata"
+    ],
+    "query": "What tables are in the sales schema?",
+    "files": [],
+    "expected_behavior": [
+      "Queries system.information_schema.tables",
+      "Applies the mandatory catalog and schema scope filters"
+    ]
+  },
+  {
+    "id": "describe-table",
+    "skills": [
+      "system-tables-metadata"
+    ],
+    "query": "Describe the columns of acme_com.sales.orders",
+    "files": [],
+    "expected_behavior": [
+      "Queries system.information_schema.columns",
+      "Returns column_name, data_type and is_nullable"
+    ]
+  },
+  {
+    "id": "table-owner",
+    "skills": [
+      "system-tables-metadata"
+    ],
+    "query": "Who owns the orders table?",
+    "files": [],
+    "expected_behavior": [
+      "Uses table_owner from information_schema.tables"
+    ]
+  },
+  {
+    "id": "red-herring-lineage",
+    "skills": [
+      "system-tables-metadata"
+    ],
+    "query": "Which jobs write to the orders table?",
+    "files": [],
+    "expected_behavior": [
+      "Does not answer from information_schema",
+      "Uses lineage tables instead (system-tables-lineage)"
+    ]
+  }
+]

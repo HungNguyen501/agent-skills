@@ -1,0 +1,23 @@
+[
+  {
+    "id": "precise-request",
+    "skills": ["domain-skill-name"],
+    "query": "A precise request in the vocabulary of the domain",
+    "files": [],
+    "expected_behavior": ["Observable behavior 1", "Observable behavior 2"]
+  },
+  {
+    "id": "casual-request",
+    "skills": ["domain-skill-name"],
+    "query": "The same need, phrased casually",
+    "files": [],
+    "expected_behavior": ["Observable behavior 1"]
+  },
+  {
+    "id": "red-herring",
+    "skills": ["domain-skill-name"],
+    "query": "A request that shares keywords but needs a different skill",
+    "files": [],
+    "expected_behavior": ["Does not apply this skill's workflow"]
+  }
+]

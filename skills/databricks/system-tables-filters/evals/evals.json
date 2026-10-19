@@ -1,0 +1,49 @@
+[
+  {
+    "id": "list-catalogs",
+    "skills": [
+      "system-tables-filters"
+    ],
+    "query": "What catalogs do we have?",
+    "files": [],
+    "expected_behavior": [
+      "Queries system.information_schema.catalogs with catalog_name LIKE '%\\_com'",
+      "Excludes the system catalog and __databricks_internal catalogs"
+    ]
+  },
+  {
+    "id": "outside-window",
+    "skills": [
+      "system-tables-filters"
+    ],
+    "query": "Show me job runs from 250 days ago",
+    "files": [],
+    "expected_behavior": [
+      "Declines politely and explains the 180-day limit",
+      "Does not run a query that is known to return nothing"
+    ]
+  },
+  {
+    "id": "in-window-date",
+    "skills": [
+      "system-tables-filters"
+    ],
+    "query": "How much did we spend on 2 days ago?",
+    "files": [],
+    "expected_behavior": [
+      "Applies the 180-day range filter and also a filter for the requested date",
+      "Does not refuse the date"
+    ]
+  },
+  {
+    "id": "hidden-objects",
+    "skills": [
+      "system-tables-filters"
+    ],
+    "query": "Show me the tables in the bronze schemas and the system catalog",
+    "files": [],
+    "expected_behavior": [
+      "Does not surface bronze schemas or the system catalog, even though the user asked"
+    ]
+  }
+]

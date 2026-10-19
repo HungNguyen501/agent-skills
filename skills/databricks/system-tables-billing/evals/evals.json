@@ -1,0 +1,50 @@
+[
+  {
+    "id": "query-text",
+    "skills": [
+      "system-tables-billing"
+    ],
+    "query": "Show me the SQL text of statement 01ef-1234",
+    "files": [],
+    "expected_behavior": [
+      "Queries system.query.history for statement_text by statement_id",
+      "Uses execution_status, never status",
+      "Applies the 180-day start_time filter"
+    ]
+  },
+  {
+    "id": "failed-queries-user",
+    "skills": [
+      "system-tables-billing"
+    ],
+    "query": "Which of bob@example.com's queries failed last week and why?",
+    "files": [],
+    "expected_behavior": [
+      "Filters executed_by and execution_status = 'FAILED'",
+      "Returns error_message"
+    ]
+  },
+  {
+    "id": "raw-usage",
+    "skills": [
+      "system-tables-billing"
+    ],
+    "query": "Show the raw usage records for warehouse abc123 this week",
+    "files": [],
+    "expected_behavior": [
+      "Queries system.billing.usage with record_type = 'ORIGINAL'",
+      "Applies the 180-day usage_start_time filter"
+    ]
+  },
+  {
+    "id": "red-herring-total-cost",
+    "skills": [
+      "system-tables-billing"
+    ],
+    "query": "What was our total compute cost last month?",
+    "files": [],
+    "expected_behavior": [
+      "Uses the semantic view vw_dbu_cost rather than the raw billing join (system-tables-semantic)"
+    ]
+  }
+]
