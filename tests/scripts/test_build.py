@@ -1,10 +1,11 @@
 """Unit tests for module build"""
 from unittest.mock import patch
+import shutil
 
 import pytest
 
 from build import OUTPUTS, _same, generate
-from tests.mocks import REPO_ROOT
+from tests.mocks import REPO_ROOT, symlink_or_skip
 
 
 @patch(target="skilllib.discover", return_value=[])
@@ -68,6 +69,55 @@ def test_same_ignores_group_and_other_permission_bits(test_input, tmp_path):
     a.chmod(test_input[0])
     b.chmod(test_input[1])
     assert _same(a, b)
+
+
+@pytest.mark.parametrize("link_on_left", [False, True], ids=["link-in-committed", "link-in-generated"])
+def test_same_file_replaced_by_a_symlink(link_on_left, tmp_path):
+    """A link to identical content must not pass, in either argument position"""
+    real, plain, link = tmp_path / "real.md", tmp_path / "plain.md", tmp_path / "link.md"
+    real.write_text("same", encoding="utf-8")
+    plain.write_text("same", encoding="utf-8")
+    symlink_or_skip(str(real), link)
+    a, b = (link, plain) if link_on_left else (plain, link)
+    assert not _same(a, b)
+
+
+@pytest.mark.parametrize("link_on_left", [False, True], ids=["link-in-committed", "link-in-generated"])
+def test_same_directory_replaced_by_a_symlink(link_on_left, tmp_path):
+    """A link to a directory with identical content must not pass, in either argument position"""
+    real, plain, link = tmp_path / "real", tmp_path / "plain", tmp_path / "link"
+    for directory in (real, plain):
+        directory.mkdir()
+        (directory / "SKILL.md").write_text("same", encoding="utf-8")
+    symlink_or_skip(str(real), link)
+    a, b = (link, plain) if link_on_left else (plain, link)
+    assert not _same(a, b)
+
+
+def test_same_symlink_nested_in_a_compared_tree(tmp_path):
+    """A file or a directory swapped for a link deep inside the tree is found, and a broken link is a difference too"""
+    trees = {}
+    for label in ("a", "b"):
+        root = tmp_path / label
+        (root / "refs" / "sub").mkdir(parents=True)
+        (root / "refs" / "note.md").write_text("same", encoding="utf-8")
+        (root / "refs" / "sub" / "deep.md").write_text("same", encoding="utf-8")
+        trees[label] = root
+    assert _same(trees["a"], trees["b"])
+
+    (trees["b"] / "refs" / "note.md").unlink()
+    symlink_or_skip(str(trees["a"] / "refs" / "note.md"), trees["b"] / "refs" / "note.md")
+    assert not _same(trees["a"], trees["b"]), "file replaced by a link"
+
+    (trees["b"] / "refs" / "note.md").unlink()
+    (trees["b"] / "refs" / "note.md").write_text("same", encoding="utf-8")
+    shutil.rmtree(trees["b"] / "refs" / "sub")
+    symlink_or_skip(str(trees["a"] / "refs" / "sub"), trees["b"] / "refs" / "sub")
+    assert not _same(trees["a"], trees["b"]), "directory replaced by a link"
+
+    (trees["b"] / "refs" / "sub").unlink()
+    symlink_or_skip(str(tmp_path / "does-not-exist"), trees["b"] / "refs" / "sub")
+    assert not _same(trees["a"], trees["b"]), "directory replaced by a broken link"
 
 
 def test_same_executable_bit_in_nested_files(tmp_path):

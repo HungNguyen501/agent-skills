@@ -70,6 +70,10 @@ def _owner_exec(path: Path) -> bool | None:
 
 
 def _same(a: Path, b: Path) -> bool:
+    """Whether two trees are identical. A symlink on either side is a difference: is_file(), is_dir() and the content
+    comparison all follow links, and generated output never contains them, so a link would hide a broken artifact."""
+    if a.is_symlink() or b.is_symlink():
+        return False
     if a.is_file() or b.is_file():
         if not (a.is_file() and b.is_file()):
             return False
