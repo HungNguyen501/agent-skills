@@ -7,6 +7,7 @@ Malformed input must produce findings for that skill and never stop the run.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -116,7 +117,11 @@ def _check_links(text: str, base: Path, root: Path, label: Path) -> tuple[list[s
         if "\\" in link:
             errors.append(f"{label}: use forward slashes in paths ('{link}')")
             continue
-        target = (base / link).resolve()
+        try:
+            target = (base / link).resolve()
+        except (OSError, ValueError, RuntimeError) as exc:  # RuntimeError: symlink loop on Python 3.11/3.12
+            errors.append(f"{label}: link '{link}' cannot be resolved ({exc.__class__.__name__}); check for a symlink loop")
+            continue
         resolved.add(target)
         if not target.is_relative_to(root):
             errors.append(f"{label}: link '{link}' points outside the skill directory, so it will be missing once packaged")
@@ -139,11 +144,12 @@ def check_references(skill: Skill, rel: Path) -> Findings:
     for ref in sorted(refs_dir.glob("**/*.md")) if refs_dir.is_dir() else []:
         ref_rel = _rel(ref)
         try:
+            ref_resolved = ref.resolve()
             ref_text = ref.read_text(encoding="utf-8")
-        except (OSError, ValueError) as exc:  # ValueError includes UnicodeDecodeError
+        except (OSError, ValueError, RuntimeError) as exc:  # ValueError includes UnicodeDecodeError
             errors.append(f"{ref_rel}: cannot read reference ({exc.__class__.__name__}): {exc}")
             continue
-        if ref.resolve() not in linked:
+        if ref_resolved not in linked:
             warnings.append(f"{ref_rel}: not linked from SKILL.md")
         if len(ref_text.splitlines()) > 100 and not re.search(r"^## Contents\b", ref_text, re.MULTILINE):
             errors.append(f"{ref_rel}: over 100 lines, needs a '## Contents' section")
@@ -155,6 +161,18 @@ def check_references(skill: Skill, rel: Path) -> Findings:
             if link.endswith(".md")
         ]
     return errors, warnings
+
+
+def check_symlinks(skill: Skill) -> list[str]:
+    """Skills must not contain symlinks: copytree would follow them while packaging, so a link can
+    pull in files from outside the skill or fail on a loop. Symlinked directories are not descended."""
+    errors: list[str] = []
+    for dirpath, dirnames, filenames in os.walk(skill.path, followlinks=False):
+        for name in dirnames + filenames:
+            path = Path(dirpath) / name
+            if path.is_symlink():
+                errors.append(f"{_rel(path)}: symlinks are not allowed in skills (packaging follows them)")
+    return errors
 
 
 def check_evals(skill: Skill, rel: Path) -> list[str]:
@@ -193,9 +211,10 @@ def check_skill(skill_dir: Path, seen: dict[str, Path]) -> Findings:
             + check_metadata(skill, rel)
             + check_size(skill, rel)
             + ref_errors
+            + check_symlinks(skill)
             + check_evals(skill, rel)
         )
-    except (ValueError, OSError) as exc:  # last resort so one unreadable file cannot stop the whole run
+    except (ValueError, OSError, RuntimeError) as exc:  # last resort so one unreadable file cannot stop the whole run
         return [f"{rel}: validation aborted ({exc.__class__.__name__}): {exc}"], []
     return errors, desc_warnings + ref_warnings
 

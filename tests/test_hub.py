@@ -42,6 +42,23 @@ def make_skill(base: Path, name: str, frontmatter: str | None = None, body: str 
     return skill
 
 
+def symlink_or_skip(target: str, link: Path) -> None:
+    """Create a symlink, skipping the test where the platform does not allow it."""
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        raise unittest.SkipTest(f"cannot create symlinks here: {exc}") from exc
+
+
+def add_symlink_loops(skill_dir: Path) -> None:
+    """A self-referential link and a mutually recursive pair: Path.resolve() raises RuntimeError on 3.11/3.12."""
+    refs = skill_dir / "references"
+    refs.mkdir(exist_ok=True)
+    symlink_or_skip("loop.md", refs / "loop.md")
+    symlink_or_skip("b.md", refs / "a.md")
+    symlink_or_skip("a.md", refs / "b.md")
+
+
 class TmpDirCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -121,6 +138,31 @@ class ValidatorTests(TmpDirCase):
         skill = make_skill(self.tmp, "titled-escape", body='See [other](../outside.md "Details").\n')
         errors = self.run_check(skill)
         self.assertTrue(any("outside the skill directory" in e for e in errors), errors)
+
+    def test_symlink_loops_are_reported_and_later_skills_are_still_checked(self):
+        looped = make_skill(self.tmp, "looped", body="See [a](references/loop.md) and [b](references/a.md).\n")
+        add_symlink_loops(looped)
+        good = make_skill(self.tmp, "good-after-loop")
+        seen: dict = {}
+        errors, _ = validate.check_skill(looped, seen)  # must not raise RuntimeError
+        good_errors, _ = validate.check_skill(good, seen)
+        self.assertTrue(any("symlinks are not allowed" in e for e in errors), errors)
+        self.assertEqual(good_errors, [])
+
+    def test_link_resolution_failure_is_a_finding_not_a_crash(self):
+        looped = make_skill(self.tmp, "resolve-fail", body="See [a](references/loop.md).\n")
+        add_symlink_loops(looped)
+        errors, _ = validate._check_links("See [a](references/loop.md).", looped.resolve(), looped.resolve(), Path("resolve-fail"))
+        self.assertEqual(len(errors), 1)
+        self.assertTrue("symlink loop" in errors[0] or "missing file" in errors[0] or "outside" in errors[0], errors)
+
+    def test_any_symlink_in_a_skill_is_rejected(self):
+        skill = make_skill(self.tmp, "linked", files={"references/real.md": "# R\n"})
+        symlink_or_skip("real.md", skill / "references" / "alias.md")
+        symlink_or_skip("references", skill / "refs-dir")
+        errors = self.run_check(skill)
+        flagged = [e for e in errors if "symlinks are not allowed" in e]
+        self.assertEqual(len(flagged), 2, errors)
 
     def test_valid_ascii_order_is_accepted(self):
         skill = make_skill(self.tmp, "ok-order", frontmatter='name: ok-order\ndescription: Use when testing.\nmetadata:\n  order: "007"\n')
@@ -280,6 +322,17 @@ class ToolCallTests(TmpDirCase):
         for tool in ("load_skill", "read_skill_file"):
             for bad_args in (None, ["demo"], "demo", 5):
                 self.assertIn("Invalid arguments", loader.handle_tool_call(self.skills, tool, bad_args), (tool, bad_args))
+
+    def test_symlink_loop_in_a_bundled_file_returns_an_error_string(self):
+        add_symlink_loops(self.tmp / "demo")
+        for path in ("references/loop.md", "references/a.md", "references/b.md"):
+            for call in (
+                lambda p=path: loader.read_skill_file(self.skills, "demo", p),
+                lambda p=path: loader.handle_tool_call(self.skills, "read_skill_file", {"name": "demo", "path": p}),
+            ):
+                result = call()  # must not raise RuntimeError
+                self.assertIsInstance(result, str)
+                self.assertTrue("could not be read" in result or "not found" in result, result)
 
     def test_nul_byte_in_path_returns_an_error_string(self):
         result = loader.handle_tool_call(self.skills, "read_skill_file", {"name": "demo", "path": "a\x00b"})

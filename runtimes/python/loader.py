@@ -127,15 +127,15 @@ def read_skill_file(skills: dict[str, Skill], name: str, path: str) -> str:
     skill = skills.get(name)
     if skill is None:
         return f"Unknown skill '{name}'."
-    root = skill.path.resolve()
     try:
+        root = skill.path.resolve()
         target = (root / path).resolve()
         if not target.is_relative_to(root) or not target.is_file():
             return f"File '{path}' not found in skill '{name}'."
         return target.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return f"File '{path}' in skill '{name}' is not UTF-8 text and cannot be read."
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:  # RuntimeError: symlink loop on Python 3.11/3.12
         return f"File '{path}' in skill '{name}' could not be read: {exc.__class__.__name__}."
 
 

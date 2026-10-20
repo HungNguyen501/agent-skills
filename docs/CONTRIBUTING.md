@@ -29,6 +29,7 @@ Add a regression test in `tests/test_hub.py` for any bug fixed in `scripts/` or 
 - `SKILL.md` body at most 500 lines and about 5,000 tokens.
 - References are linked from `SKILL.md`, one level deep, and files over 100 lines start with `## Contents`.
 - `evals/evals.json` has at least 3 cases.
+- Links stay inside the skill and never point into `evals/` or `__pycache__/`, which are not packaged. Skills contain no symlinks, because packaging follows them.
 - Generated files (`plugins/`, `.claude-plugin/`, `manifest.json`) match `scripts/build.py` output.
 
 ## Hub rules
