@@ -1,0 +1,59 @@
+[
+  {
+    "id": "cost-by-user",
+    "skills": [
+      "system-tables-semantic"
+    ],
+    "query": "Which user spent the most this month?",
+    "files": [],
+    "expected_behavior": [
+      "Uses vireox_infra.semantic.vw_dbu_cost",
+      "Filters run_as IS NOT NULL and the month with usage_date"
+    ]
+  },
+  {
+    "id": "p95-duration",
+    "skills": [
+      "system-tables-semantic"
+    ],
+    "query": "Show p95 job duration this week",
+    "files": [],
+    "expected_behavior": [
+      "Uses vw_job_run_stats and p95_run_duration_seconds"
+    ]
+  },
+  {
+    "id": "cache-hit-rate",
+    "skills": [
+      "system-tables-semantic"
+    ],
+    "query": "What is the cache hit rate today?",
+    "files": [],
+    "expected_behavior": [
+      "Uses vw_query_perf and cache_hit_rate_pct"
+    ]
+  },
+  {
+    "id": "warehouse-user-cost",
+    "skills": [
+      "system-tables-semantic"
+    ],
+    "query": "How much did alice cost us on the shared SQL warehouse?",
+    "files": [],
+    "expected_behavior": [
+      "Notes run_as is NULL for shared warehouses",
+      "Estimates from vw_query_perf duration share and says it is an estimate"
+    ]
+  },
+  {
+    "id": "red-herring-run-rows",
+    "skills": [
+      "system-tables-semantic"
+    ],
+    "query": "Which runs failed yesterday? Show run IDs and termination codes",
+    "files": [],
+    "expected_behavior": [
+      "Uses raw system.lakeflow.job_run_timeline individual rows, not the aggregated view"
+    ]
+  }
+]

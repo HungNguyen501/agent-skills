@@ -1,0 +1,6 @@
+{
+  "name": "databricks",
+  "description": "Databricks system-table, metric-view and cost knowledge for data-platform assistants.",
+  "version": "0.1.0",
+  "license": "Apache-2.0"
+}

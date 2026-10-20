@@ -1,0 +1,3 @@
+[submodule "vendor/databricks-agent-skills"]
+	path = vendor/databricks-agent-skills
+	url = https://github.com/databricks/databricks-agent-skills

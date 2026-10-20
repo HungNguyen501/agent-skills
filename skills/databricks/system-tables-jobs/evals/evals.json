@@ -1,0 +1,49 @@
+[
+  {
+    "id": "task-dependencies",
+    "skills": [
+      "system-tables-jobs"
+    ],
+    "query": "What does job nightly_load depend on, task by task?",
+    "files": [],
+    "expected_behavior": [
+      "Uses system.lakeflow.job_tasks and depends_on_keys, not depends_on",
+      "Applies SCD2 dedup with QUALIFY ROW_NUMBER and delete_time IS NULL"
+    ]
+  },
+  {
+    "id": "failed-runs",
+    "skills": [
+      "system-tables-jobs"
+    ],
+    "query": "List the runs that failed yesterday with their termination codes",
+    "files": [],
+    "expected_behavior": [
+      "Queries job_run_timeline with result_state IS NOT NULL and the 180-day filter",
+      "Joins to the latest jobs rows and shows the job name, never job_id alone"
+    ]
+  },
+  {
+    "id": "active-jobs-by-creator",
+    "skills": [
+      "system-tables-jobs"
+    ],
+    "query": "Which active jobs did alice@example.com create?",
+    "files": [],
+    "expected_behavior": [
+      "Filters delete_time IS NULL",
+      "Filters on creator_user_name, not creator_id"
+    ]
+  },
+  {
+    "id": "red-herring-success-rate",
+    "skills": [
+      "system-tables-jobs"
+    ],
+    "query": "What is the success rate of job nightly_load over the last month?",
+    "files": [],
+    "expected_behavior": [
+      "Uses the semantic metric view rather than raw run rows (system-tables-semantic)"
+    ]
+  }
+]

@@ -1,0 +1,18 @@
+{
+  "name": "agent-skills",
+  "owner": {
+    "name": "mrroot501"
+  },
+  "plugins": [
+    {
+      "name": "authoring",
+      "source": "./plugins/authoring",
+      "description": "Guidance for writing, reviewing and testing agent skills."
+    },
+    {
+      "name": "databricks",
+      "source": "./plugins/databricks",
+      "description": "Databricks system-table, metric-view and cost knowledge for data-platform assistants."
+    }
+  ]
+}

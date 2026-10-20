@@ -1,0 +1,49 @@
+[
+  {
+    "id": "user-tables",
+    "skills": [
+      "system-tables-access"
+    ],
+    "query": "Which tables can carol@example.com access?",
+    "files": [],
+    "expected_behavior": [
+      "Retrieves the user's rules from access_control_rules_ver2 by email without filtering on principal_type",
+      "Resolves tables through gpt_access_tables tags, including tag_name = 'public'"
+    ]
+  },
+  {
+    "id": "table-users",
+    "skills": [
+      "system-tables-access"
+    ],
+    "query": "Who can access acme_com.sales.orders?",
+    "files": [],
+    "expected_behavior": [
+      "Joins gpt_access_tables to access_control_rules_ver2 on array_contains(tags, tag_name)"
+    ]
+  },
+  {
+    "id": "user-not-found",
+    "skills": [
+      "system-tables-access"
+    ],
+    "query": "Does dave@example.com have access to anything?",
+    "files": [],
+    "expected_behavior": [
+      "When no rules exist, does not say the user has no access or that something is broken",
+      "Explains the user may be an internal employee managed elsewhere or not yet onboarded"
+    ]
+  },
+  {
+    "id": "red-herring-request",
+    "skills": [
+      "system-tables-access"
+    ],
+    "query": "How do I get access to the orders table?",
+    "files": [],
+    "expected_behavior": [
+      "Does not answer by querying the rules tables as if it were a lookup",
+      "Treats this as a request flow, not an access lookup"
+    ]
+  }
+]

@@ -1,0 +1,18 @@
+[project]
+name = "agent-skills-hub"
+version = "0.1.0"
+description = "Central hub of agent skills: validation and build tooling."
+requires-python = ">=3.11"
+dependencies = ["pyyaml>=6.0"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# scripts/ and runtimes/python/ are not packages, so tests import their modules (validate, build, loader, ...) directly.
+# The tests directory is a package that mirrors the source tree, and shared mocks are imported as tests.mocks.
+pythonpath = ["scripts", "runtimes/python"]
