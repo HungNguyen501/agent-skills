@@ -191,6 +191,63 @@ def test_local_links():
     assert _local_links(text) == ["x.md", "y.md", "z.md", "w.md"]
 
 
+@pytest.mark.parametrize(
+    "test_input, expected",
+    [
+        ("[API](<references/api guide.md>)", ["references/api guide.md"]),
+        ("[g](<a b.md#frag>)", ["a b.md"]),
+        ('[g](<a b.md> "title")', ["a b.md"]),
+        ("[x](#frag-only)", []),
+        ("[x](<#frag-only>)", []),
+        ("See [d][ref].\n\n[ref]: ../outside.md", ["../outside.md"]),
+        ('[ref]: <my file.md> "Title"', ["my file.md"]),
+        ("[ref]: a.md#section", ["a.md"]),
+        ("   [ref]: a.md", ["a.md"]),
+        ("    [ref]: a.md", []),  # four spaces is an indented code block, not a definition
+        ("[ref]: https://example.com/x", []),
+        ("[ref]: mailto:a@b.c", []),
+        ("[one](a.md) and [ref]: not at line start", ["a.md"]),
+    ],
+)
+def test_local_links_forms(test_input, expected):
+    """Angle-bracket destinations may contain spaces, and reference definitions count as links"""
+    assert _local_links(test_input) == expected
+
+
+def test_check_skill_angle_bracket_link_with_spaces(tmp_path):
+    """An existing reference whose name contains a space validates, and counts as linked"""
+    skill = make_skill(tmp_path, "spaced", body="See [API](<references/api guide.md>).\n", files={"references/api guide.md": "# API\n"})
+    errors, warnings = check_skill(skill, {})
+    assert errors == []
+    assert warnings == []
+
+
+def test_check_skill_reference_style_link_to_existing_file(tmp_path):
+    """A reference-style link to a bundled file validates, and counts as linked"""
+    body = 'See [details][ref].\n\n[ref]: references/a.md "Details"\n'
+    skill = make_skill(tmp_path, "ref-ok", body=body, files={"references/a.md": "# A\n"})
+    errors, warnings = check_skill(skill, {})
+    assert errors == []
+    assert warnings == []
+
+
+@pytest.mark.parametrize(
+    "test_input, expected",
+    [
+        ("../outside.md", "outside the skill directory"),
+        ("references/missing.md", "missing file 'references/missing.md'"),
+        ("evals/evals.json", "not packaged"),
+        ("<references/missing guide.md>", "missing file 'references/missing guide.md'"),
+    ],
+    ids=["outside", "missing", "not-packaged", "angle-missing"],
+)
+def test_check_skill_reference_style_link_is_checked(test_input, expected, tmp_path):
+    """A reference definition is validated like an inline link, so it cannot hide a broken destination"""
+    (tmp_path / "outside.md").write_text("x", encoding="utf-8")
+    skill = make_skill(tmp_path, "ref-bad", body=f"See [details][ref].\n\n[ref]: {test_input}\n")
+    assert contains(errors_of(skill), expected)
+
+
 def test_check_links_resolution_failure(tmp_path):
     """A link that cannot be resolved is a finding, not a crash"""
     looped = make_skill(tmp_path, "resolve-fail", body="See [a](references/loop.md).\n")

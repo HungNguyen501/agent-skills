@@ -4,7 +4,7 @@ import shutil
 
 import pytest
 
-from build import OUTPUTS, _same, generate
+from build import OUTPUTS, _same, generate, install_outputs
 from tests.mocks import REPO_ROOT, symlink_or_skip
 
 
@@ -25,6 +25,62 @@ def test_generate_matches_the_committed_outputs(tmp_path):
     generate(tmp_path)
     for name in OUTPUTS:
         assert _same(tmp_path / name, REPO_ROOT / name), f"{name} is stale; run scripts/build.py"
+
+
+@pytest.fixture(name="fresh_outputs")
+def gen_fresh_outputs(tmp_path):
+    """A freshly generated tree with one file in each output, in its own directory"""
+    fresh = tmp_path / "fresh"
+    for name in OUTPUTS:
+        (fresh / name).mkdir(parents=True)
+        (fresh / name / "new.txt").write_text("new", encoding="utf-8")
+    return fresh
+
+
+@pytest.mark.parametrize("kind", ["live-directory-link", "dangling-link", "file-link", "directory", "file", "missing"])
+def test_install_outputs(kind, fresh_outputs, tmp_path):
+    """Every state an output root can be in is replaced, and a link is removed as a link"""
+    root, precious = tmp_path / "root", tmp_path / "precious"
+    root.mkdir()
+    precious.mkdir()
+    (precious / "keep.txt").write_text("keep", encoding="utf-8")
+    (tmp_path / "a-file.txt").write_text("x", encoding="utf-8")
+    for name in OUTPUTS:
+        target = root / name
+        if kind == "live-directory-link":
+            symlink_or_skip(str(precious), target)
+        elif kind == "dangling-link":
+            symlink_or_skip(str(tmp_path / "does-not-exist"), target)
+        elif kind == "file-link":
+            symlink_or_skip(str(tmp_path / "a-file.txt"), target)
+        elif kind == "directory":
+            target.mkdir()
+            (target / "old.txt").write_text("old", encoding="utf-8")
+        elif kind == "file":
+            target.write_text("old", encoding="utf-8")
+    install_outputs(fresh_outputs, root)
+    for name in OUTPUTS:
+        assert not (root / name).is_symlink(), name
+        assert (root / name / "new.txt").read_text(encoding="utf-8") == "new", name
+        assert not (root / name / "old.txt").exists(), name
+    assert (precious / "keep.txt").read_text(encoding="utf-8") == "keep"  # the link's target is never touched
+    assert (tmp_path / "a-file.txt").is_file()
+
+
+def test_same_reports_a_symlinked_output_root_so_that_a_rebuild_is_recommended_and_works(fresh_outputs, tmp_path):
+    """--check flags a link at an output root, and installing repairs it, which is what the message tells you to do"""
+    root, elsewhere = tmp_path / "root", tmp_path / "elsewhere"
+    root.mkdir()
+    elsewhere.mkdir()
+    for name in OUTPUTS:
+        (elsewhere / name).mkdir()
+        (elsewhere / name / "new.txt").write_text("new", encoding="utf-8")  # identical content behind the link
+        symlink_or_skip(str(elsewhere / name), root / name)
+        assert not _same(fresh_outputs / name, root / name), name
+    install_outputs(fresh_outputs, root)
+    for name in OUTPUTS:
+        assert not (root / name).is_symlink(), name
+        assert (root / name / "new.txt").is_file(), name
 
 
 @pytest.mark.parametrize("test_input", ["tags", ".git", "CVS"])

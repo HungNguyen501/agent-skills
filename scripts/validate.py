@@ -18,8 +18,11 @@ from skilllib import MAX_BODY_LINES, MAX_BODY_TOKENS, Skill
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 RESERVED = ("claude", "anthropic")
 XML_TAG_RE = re.compile(r"</?[A-Za-z][^>]*>")
-# Captures the destination of [text](dest), [text](dest#frag) and [text](dest "title"); anything after it up to `)` is ignored.
-MD_LINK_RE = re.compile(r"\]\(\s*<?([^)#\s>]+)>?[^)]*\)")
+# Inline links: [text](dest), [text](dest#frag), [text](dest "title") and [text](<dest with spaces>). Group 1 is the
+# angle-bracket form (spaces allowed), group 2 the plain form. Anything after the destination up to `)` is ignored.
+MD_LINK_RE = re.compile(r"\]\(\s*(?:<([^<>]+)>|([^)#\s<>]+))[^)]*\)")
+# Reference definitions: [ref]: dest, [ref]: <dest with spaces> "title". Up to three leading spaces, as in CommonMark.
+MD_REF_DEF_RE = re.compile(r"^ {0,3}\[[^\]]+\]:[ \t]*(?:<([^<>]+)>|(\S+))", re.MULTILINE)
 FIRST_PERSON_RE = re.compile(r"^(i|you|we)\b|\b(i can|you can|i will|i help)\b", re.IGNORECASE)
 KNOWN_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 MIN_EVALS = 3
@@ -37,7 +40,14 @@ def _rel(path: Path) -> Path:
 
 
 def _local_links(text: str) -> list[str]:
-    return [m for m in MD_LINK_RE.findall(text) if "://" not in m and not m.startswith("mailto:")]
+    """Local destinations of inline links and reference definitions, without fragments. Web and mail links are skipped.
+
+    Every definition counts, used or not, so a broken one cannot hide behind [text][ref]. Like the inline pattern,
+    this does not skip fenced code blocks.
+    """
+    found = [a or b for a, b in MD_LINK_RE.findall(text)] + [a or b for a, b in MD_REF_DEF_RE.findall(text)]
+    destinations = (m.split("#", 1)[0] for m in found)
+    return [d for d in destinations if d and "://" not in d and not d.startswith("mailto:")]
 
 
 def check_name(skill: Skill, rel: Path, seen: dict[str, Path]) -> list[str]:

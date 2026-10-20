@@ -87,6 +87,24 @@ def _same(a: Path, b: Path) -> bool:
     return all(_same(a / n, b / n) for n in cmp.common)
 
 
+def install_outputs(fresh: Path, root: Path) -> None:
+    """Replace each output under `root` with the freshly generated one from `fresh`.
+
+    A symlink at an output root, live or dangling, is removed as a link first. is_dir() follows links, so
+    rmtree() would raise on it, and a dangling link is not seen by exists() and would block the move. The
+    directory a live link points at is left untouched.
+    """
+    for name in OUTPUTS:
+        target = root / name
+        if target.is_symlink():
+            target.unlink()
+        elif target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+        shutil.move(str(fresh / name), str(target))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if generated files are stale")
@@ -102,13 +120,7 @@ def main() -> int:
                 return 1
             print("generated files are up to date")
             return 0
-        for name in OUTPUTS:
-            target = ROOT / name
-            if target.is_dir():
-                shutil.rmtree(target)
-            elif target.exists():
-                target.unlink()
-            shutil.move(str(fresh / name), str(target))
+        install_outputs(fresh, ROOT)
     print(f"generated {', '.join(OUTPUTS)}")
     return 0
 
