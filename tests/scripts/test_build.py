@@ -1,11 +1,13 @@
 """Unit tests for module build"""
 from unittest.mock import patch
 import shutil
+import sys
 
 import pytest
 
-from build import OUTPUTS, _same, generate, install_outputs
-from tests.mocks import REPO_ROOT, symlink_or_skip
+from build import OUTPUTS, _same, ensure_packageable, generate, install_outputs, main, package_skill
+from skilllib import load
+from tests.mocks import REPO_ROOT, add_symlink_loops, make_skill, symlink_or_skip
 
 
 @patch(target="skilllib.discover", return_value=[])
@@ -18,6 +20,99 @@ def test_generate_without_skills(mock_discover, tmp_path):
     for name in OUTPUTS:
         assert (first / name).exists(), name
         assert _same(first / name, second / name), name
+
+
+def unsafe_skill_dirs(tmp_path):
+    """Skills that a copy would follow a link out of: a linked skill root, a linked domain root and links in packaged paths"""
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    real = make_skill(tmp_path / "real", "real-skill")
+    skills = tmp_path / "skills"
+    (skills / "d").mkdir(parents=True)
+    linked_skill = skills / "d" / "linked-skill"
+    symlink_or_skip(str(real), linked_skill)
+    real_domain = tmp_path / "real-domain"
+    make_skill(real_domain, "in-linked-domain")
+    symlink_or_skip(str(real_domain), skills / "linked-domain")
+    file_link = make_skill(skills / "d", "file-link")
+    symlink_or_skip(str(outside), file_link / "references-leak.md")
+    dir_link = make_skill(skills / "d", "dir-link")
+    symlink_or_skip(str(tmp_path), dir_link / "escape")
+    loop = make_skill(skills / "d", "loop")
+    add_symlink_loops(loop)
+    return {
+        "linked-skill-root": linked_skill,
+        "linked-domain-root": skills / "linked-domain" / "in-linked-domain",
+        "file-link": file_link,
+        "directory-link": dir_link,
+        "link-loop": loop,
+    }
+
+
+@pytest.mark.parametrize("kind", ["linked-skill-root", "linked-domain-root", "file-link", "directory-link", "link-loop"])
+def test_generate_refuses_a_skill_that_a_copy_would_follow_a_link_out_of(kind, tmp_path):
+    """Nothing is read through the link and nothing is written, so no outside file can reach the distributable output"""
+    skill_dir = unsafe_skill_dirs(tmp_path)[kind]
+    out = tmp_path / "out"
+    out.mkdir()
+    domains = {skill_dir.parent.name: "Test domain."}
+    with (
+        patch(target="skilllib.discover", return_value=[skill_dir]),
+        patch(target="skilllib.load_domains", return_value=domains),
+        pytest.raises(ValueError, match="refusing to package"),
+    ):
+        generate(out)
+    assert list(out.iterdir()) == []
+
+
+@pytest.mark.parametrize("kind", ["file-link", "directory-link", "link-loop"])
+def test_package_skill_refuses_links_even_when_called_directly(kind, tmp_path):
+    """The guard is in package_skill itself, so it holds for every caller and not only for generate()"""
+    skill_dir = unsafe_skill_dirs(tmp_path)[kind]
+    with pytest.raises(ValueError, match="is a symlink"):
+        package_skill(tmp_path / "out", load(skill_dir))
+    assert not (tmp_path / "out").exists()
+
+
+def test_ensure_packageable_ignores_links_in_excluded_paths(tmp_path):
+    """evals/ and __pycache__/ are never copied, so a link there is not a reason to refuse"""
+    outside = tmp_path / "outside.txt"
+    outside.write_text("x", encoding="utf-8")
+    skill = make_skill(tmp_path / "skills" / "d", "fine", files={"__pycache__/keep.txt": "x"})
+    symlink_or_skip(str(outside), skill / "evals" / "link.json")
+    symlink_or_skip(str(outside), skill / "__pycache__" / "x.pyc")
+    assert ensure_packageable(skill) is None
+
+
+@patch(target="skilllib.load_domains", return_value={"d": "Test domain."})
+def test_main_reports_an_unsafe_skill_and_installs_nothing(mock_domains, tmp_path, capsys):
+    """The build exits with an error message instead of a traceback, and does not touch the committed outputs"""
+    skill_dir = unsafe_skill_dirs(tmp_path)["file-link"]
+    with patch.object(sys, "argv", ["build.py", "--check"]), patch(target="skilllib.discover", return_value=[skill_dir]):
+        code = main()
+    assert code == 1
+    assert "error: refusing to package file-link" in capsys.readouterr().out
+    assert mock_domains.called
+
+
+def test_generate_skill_in_an_unregistered_domain(tmp_path):
+    """A clear error, not a KeyError traceback"""
+    skill = make_skill(tmp_path / "skills" / "unlisted", "some-skill")
+    with (
+        patch(target="skilllib.discover", return_value=[skill]),
+        patch(target="skilllib.load_domains", return_value={"other": "x"}),
+        pytest.raises(ValueError, match="domain.*missing from skills/domains.json: unlisted"),
+    ):
+        generate(tmp_path / "out")
+
+
+@pytest.mark.parametrize("test_input", ['["authoring"]', '{"authoring": 5}', "{not json"], ids=["list", "non-string", "bad-json"])
+def test_generate_malformed_domain_registry(test_input, tmp_path):
+    """The build rejects the same registries the validator rejects, so a registry that validates always builds"""
+    registry = tmp_path / "domains.json"
+    registry.write_text(test_input, encoding="utf-8")
+    with patch(target="skilllib.DOMAINS_FILE", new=registry), pytest.raises(ValueError, match="domains.json"):
+        generate(tmp_path / "out")
 
 
 def test_generate_matches_the_committed_outputs(tmp_path):

@@ -1,7 +1,7 @@
 """Unit tests for module skilllib"""
 import pytest
 
-from skilllib import discover, estimate_tokens, load, parse_skill_md, split_frontmatter
+from skilllib import discover, estimate_tokens, load, load_domains, parse_skill_md, split_frontmatter
 from tests.mocks import DEEPLY_NESTED, fm, make_skill
 
 FRONT = 'name: demo\ndescription: Use when comparing ---\nmetadata:\n  always: "true"\n'
@@ -65,6 +65,55 @@ def test_load(tmp_path):
     assert skill.path == skill_dir
     assert skill.meta["name"] == "demo"
     assert skill.body == "Hello\n"
+
+
+def test_load_domains(tmp_path):
+    """Happy path - a mapping of domain names to descriptions"""
+    registry = tmp_path / "domains.json"
+    registry.write_text('{"authoring": "Guidance.", "databricks": "Data."}', encoding="utf-8")
+    assert load_domains(registry) == {"authoring": "Guidance.", "databricks": "Data."}
+
+
+def test_load_domains_real_registry():
+    """The registry in this repository is well formed, and every domain directory is registered"""
+    domains = load_domains()
+    assert domains
+    assert {d.parent.name for d in discover()} <= set(domains)
+
+
+@pytest.mark.parametrize(
+    "test_input",
+    [
+        '["authoring", "databricks"]',
+        '"authoring"',
+        "null",
+        '{"authoring": 1}',
+        '{"authoring": null}',
+        '{"authoring": ["x"]}',
+        '{"authoring": ""}',
+        '{"authoring": "   "}',
+        '{"": "no name"}',
+        "{not json",
+        "",
+        "[" * 100_000 + "]" * 100_000,
+    ],
+    ids=[
+        "list", "string", "null", "int-value", "null-value", "list-value",
+        "empty-description", "blank-description", "empty-name", "bad-json", "empty-file", "too-deep",
+    ],
+)
+def test_load_domains_malformed(test_input, tmp_path):
+    """Anything but a mapping of names to non-empty strings is a ValueError that names the file"""
+    registry = tmp_path / "domains.json"
+    registry.write_text(test_input, encoding="utf-8")
+    with pytest.raises(ValueError, match="domains.json"):
+        load_domains(registry)
+
+
+def test_load_domains_missing_file(tmp_path):
+    """A missing registry is a ValueError, not a FileNotFoundError traceback"""
+    with pytest.raises(ValueError, match="domains.json not found"):
+        load_domains(tmp_path / "domains.json")
 
 
 @pytest.mark.parametrize("test_input, expected", [("x" * 400, 100), ("", 0), ("abc", 0)])

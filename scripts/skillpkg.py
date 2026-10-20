@@ -34,6 +34,15 @@ def walk_packaged(root: Path) -> Iterator[tuple[Path, list[str], list[str]]]:
         yield Path(dirpath), dirnames, [f for f in filenames if f not in skipped]
 
 
+def root_links(skill_dir: Path) -> list[tuple[Path, str]]:
+    """The skill directory and its domain directory, each with a label, for whichever of them is a symlink.
+
+    walk_packaged() does not look through a linked root, so callers check these separately and before reading
+    anything inside the skill.
+    """
+    return [(p, label) for p, label in ((skill_dir, "skill directory"), (skill_dir.parent, "domain directory")) if p.is_symlink()]
+
+
 def find_symlinks(root: Path) -> list[Path]:
     """Every symlink under `root` that packaging would copy. A link in a path that is never copied is not reported."""
     return [

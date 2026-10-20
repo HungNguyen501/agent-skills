@@ -3,11 +3,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import json
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / "skills"
+DOMAINS_FILE = SKILLS_DIR / "domains.json"
 MAX_BODY_LINES = 500
 MAX_BODY_TOKENS = 5000
 
@@ -18,6 +20,25 @@ class Skill:
     path: Path
     meta: dict
     body: str
+
+
+def load_domains(path: Path | None = None) -> dict[str, str]:
+    """Read the domain registry: a JSON object that maps each domain name to a non-empty description string.
+
+    Used by both validate.py and build.py, so a registry that validates is one the build can use.
+    Raises ValueError, naming the file, for a missing file, bad JSON or the wrong shape.
+    """
+    path = path or DOMAINS_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ValueError(f"{path.name} not found") from None
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"{path.name} cannot be read as JSON: {exc.__class__.__name__}: {exc}") from exc
+    valid = isinstance(data, dict) and all(isinstance(k, str) and k and isinstance(v, str) and v.strip() for k, v in data.items())
+    if not valid:
+        raise ValueError(f"{path.name} must be a JSON object that maps each domain name to a non-empty description string")
+    return data
 
 
 def estimate_tokens(text: str) -> int:

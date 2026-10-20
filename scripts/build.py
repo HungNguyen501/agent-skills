@@ -36,16 +36,37 @@ def write_plugin_manifest(out: Path, domain: str, description: str) -> dict:
     return {"name": domain, "source": f"./plugins/{domain}", "description": description}
 
 
+def ensure_packageable(skill_dir: Path) -> None:
+    """Raise ValueError unless copying `skill_dir` stays inside it.
+
+    copytree follows symlinks, so a link would copy files from outside the skill into distributable output,
+    or fail on a loop. This checks the skill and domain directories, then every link in a path that is
+    packaged. Links in excluded paths (evals, __pycache__) are ignored, because they are never copied.
+    """
+    problems = [f"{path} is a symlinked {label}" for path, label in skillpkg.root_links(skill_dir)]
+    if not problems:
+        problems = [f"{path} is a symlink" for path in skillpkg.find_symlinks(skill_dir)]
+    if problems:
+        raise ValueError(f"refusing to package {skill_dir.name}: {'; '.join(problems)}")
+
+
 def package_skill(out: Path, skill: skilllib.Skill) -> None:
-    """Copy a skill into its domain plugin, leaving out evals and caches."""
+    """Copy a skill into its domain plugin, leaving out evals and caches. Raises ValueError if it contains symlinks."""
+    ensure_packageable(skill.path)
     dest = out / "plugins" / skill.domain / "skills" / skill.path.name
     shutil.copytree(skill.path, dest, ignore=skillpkg.ignore_patterns())
 
 
 def generate(out: Path) -> None:
     """Coordinate the build: per-domain plugins, packaged skills and the marketplace."""
-    domains = json.loads((skilllib.SKILLS_DIR / "domains.json").read_text(encoding="utf-8"))
-    skills = [skilllib.load(p) for p in skilllib.discover()]
+    domains = skilllib.load_domains()
+    skill_dirs = skilllib.discover()
+    for skill_dir in skill_dirs:
+        ensure_packageable(skill_dir)  # before SKILL.md is read, which would read through a linked skill or domain directory
+    skills = [skilllib.load(p) for p in skill_dirs]
+    unregistered = sorted({s.domain for s in skills} - domains.keys())
+    if unregistered:
+        raise ValueError(f"domain(s) missing from skills/domains.json: {', '.join(unregistered)}")
 
     # Always create every output directory, so an empty skill collection still builds and checks cleanly.
     (out / "plugins").mkdir(parents=True, exist_ok=True)
@@ -112,7 +133,11 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory() as tmp:
         fresh = Path(tmp)
-        generate(fresh)
+        try:
+            generate(fresh)
+        except (ValueError, OSError) as exc:
+            print(f"error: {exc}")
+            return 1
         if args.check:
             stale = [n for n in OUTPUTS if not _same(fresh / n, ROOT / n)]
             if stale:

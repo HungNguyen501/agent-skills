@@ -197,17 +197,23 @@ def test_check_skill_symlinked_skill_and_domain_roots(tmp_path):
         ("link.md", True),
     ],
 )
-def test_check_skill_rejects_exactly_the_symlinks_that_packaging_follows(test_input, expected, tmp_path):
-    """Packaging follows links, so a link is rejected exactly when it would end up in the packaged output"""
+def test_check_skill_and_package_skill_reject_the_same_symlinks(test_input, expected, tmp_path):
+    """The validator and the build agree: a link in a packaged path is rejected by both, a link in an excluded path by neither"""
     outside = tmp_path / "outside.txt"
     outside.write_text("x", encoding="utf-8")
     skill_dir = make_skill(tmp_path / "skills" / "d", "agree")
     (skill_dir / test_input).parent.mkdir(parents=True, exist_ok=True)
     symlink_or_skip(str(outside), skill_dir / test_input)
-    package_skill(tmp_path / "out", load(skill_dir))
-    copied = (tmp_path / "out" / "plugins" / "d" / "skills" / "agree" / test_input).exists()
     assert contains(errors_of(skill_dir), "symlinks are not allowed") is expected
-    assert copied is expected
+    packaged = tmp_path / "out" / "plugins" / "d" / "skills" / "agree"
+    if expected:
+        with pytest.raises(ValueError, match="is a symlink"):
+            package_skill(tmp_path / "out", load(skill_dir))
+        assert not packaged.exists()
+    else:
+        package_skill(tmp_path / "out", load(skill_dir))
+        assert (packaged / "SKILL.md").is_file()
+        assert not (packaged / test_input).exists()
 
 
 def test_local_links():
@@ -381,6 +387,30 @@ def test_check_links_resolution_failure(tmp_path):
     errors, _ = _check_links("See [a](references/loop.md).", looped.resolve(), looped.resolve(), Path("resolve-fail"))
     assert len(errors) == 1
     assert any(word in errors[0] for word in ("symlink loop", "missing file", "outside"))
+
+
+def test_main_malformed_domain_registry(tmp_path, capsys):
+    """The registry is reported once, and that is not repeated as a missing-domain error on every skill"""
+    registry = tmp_path / "domains.json"
+    registry.write_text('["authoring", "databricks"]', encoding="utf-8")
+    skill = make_skill(tmp_path / "skills" / "authoring", "ok-skill")
+    with patch(target="skilllib.DOMAINS_FILE", new=registry), patch(target="skilllib.discover", return_value=[skill]):
+        code = main()
+    out = capsys.readouterr().out
+    assert code == 1
+    assert out.count("domains.json must be a JSON object") == 1
+    assert "domain missing" not in out
+
+
+def test_main_skill_in_an_unregistered_domain(tmp_path, capsys):
+    """A valid registry still produces the per-skill missing-domain error"""
+    registry = tmp_path / "domains.json"
+    registry.write_text('{"authoring": "Guidance."}', encoding="utf-8")
+    skill = make_skill(tmp_path / "skills" / "unlisted", "ok-skill")
+    with patch(target="skilllib.DOMAINS_FILE", new=registry), patch(target="skilllib.discover", return_value=[skill]):
+        code = main()
+    assert code == 1
+    assert "unlisted: domain missing from skills/domains.json" in capsys.readouterr().out
 
 
 def test_main_real_hub(capsys):

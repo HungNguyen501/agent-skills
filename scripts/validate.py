@@ -230,11 +230,7 @@ def check_evals(skill: Skill, rel: Path) -> list[str]:
 def check_roots(skill_dir: Path) -> list[str]:
     """Reject a symlinked skill or domain directory. os.walk in check_symlinks never inspects its own
     starting directory and packaging follows links, so this runs before anything is read through them."""
-    return [
-        f"{_rel(path)}: {label} must not be a symlink (packaging follows it)"
-        for path, label in ((skill_dir, "skill directory"), (skill_dir.parent, "domain directory"))
-        if path.is_symlink()
-    ]
+    return [f"{_rel(path)}: {label} must not be a symlink (packaging follows it)" for path, label in skillpkg.root_links(skill_dir)]
 
 
 def check_loaded(skill: Skill, rel: Path, seen: dict[str, Path]) -> Findings:
@@ -270,15 +266,18 @@ def check_skill(skill_dir: Path, seen: dict[str, Path]) -> Findings:
 
 
 def main() -> int:
-    domains_file = skilllib.SKILLS_DIR / "domains.json"
-    domains = json.loads(domains_file.read_text(encoding="utf-8")) if domains_file.exists() else {}
     all_errors: list[str] = []
     all_warnings: list[str] = []
     seen: dict[str, Path] = {}
+    try:
+        domains: dict[str, str] | None = skilllib.load_domains()
+    except ValueError as exc:
+        all_errors.append(f"skills/{exc}")
+        domains = None  # the registry itself is the finding; do not add a missing-domain error to every skill
 
     skill_dirs = skilllib.discover()
     for skill_dir in skill_dirs:
-        if skill_dir.parent.name not in domains:
+        if domains is not None and skill_dir.parent.name not in domains:
             all_errors.append(f"{skill_dir.parent.name}: domain missing from skills/domains.json")
         errors, warnings = check_skill(skill_dir, seen)
         all_errors += errors
