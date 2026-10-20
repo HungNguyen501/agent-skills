@@ -58,6 +58,16 @@ def _parse(text: str) -> tuple[dict, str]:
     return meta, body.strip()
 
 
+def _parse_order(value: object) -> int:
+    """metadata.order as an int. Accepts an int or an integer string; anything else raises ValueError."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(f"metadata.order must be an integer, got {value!r}")
+    try:
+        return int(value)
+    except ValueError:
+        raise ValueError(f"metadata.order must be an integer, got {value!r}") from None
+
+
 def discover(
     skills_dirs: str | Path | Iterable[str | Path],
     allow: set[str] | frozenset[str] | list[str] | None = None,
@@ -80,8 +90,8 @@ def discover(
                     raise ValueError(f"name must be a non-empty string, got {name!r}")
                 md_meta = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
                 always = str(md_meta.get("always", "false")).lower() == "true"
-                order = int(md_meta.get("order", 1000))
-            except (ValueError, OSError) as exc:
+                order = _parse_order(md_meta.get("order", 1000))
+            except (TypeError, ValueError, OSError) as exc:  # parsing one file's metadata; never lose the file name
                 raise ValueError(f"{md}: {exc}") from exc
             if name in seen:
                 raise ValueError(f"duplicate skill name '{name}': {seen[name]} and {md.parent}")
@@ -158,9 +168,20 @@ TOOL_SCHEMAS = [
 
 
 def handle_tool_call(skills: dict[str, Skill], tool: str, args: dict) -> str | None:
-    """Return the tool result, or None if `tool` is not a skill tool."""
+    """Return the tool result, or None if `tool` is not a skill tool.
+
+    Arguments come from a model, so they are validated here: a bad call returns an error string
+    the model can act on and never raises.
+    """
+    required = {"load_skill": ("name",), "read_skill_file": ("name", "path")}.get(tool)
+    if required is None:
+        return None
+    if not isinstance(args, dict):
+        return f"Invalid arguments for {tool}: expected a JSON object with string fields {', '.join(required)}."
+    for key in required:
+        value = args.get(key)
+        if not isinstance(value, str) or not value:
+            return f"Invalid argument '{key}' for {tool}: expected a non-empty string, got {type(value).__name__}."
     if tool == "load_skill":
-        return load_skill(skills, args.get("name", ""))
-    if tool == "read_skill_file":
-        return read_skill_file(skills, args.get("name", ""), args.get("path", ""))
-    return None
+        return load_skill(skills, args["name"])
+    return read_skill_file(skills, args["name"], args["path"])

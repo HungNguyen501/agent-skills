@@ -24,16 +24,34 @@ import tomllib
 from pathlib import Path
 
 
+# Names left out of synced skills. Keep identical to PACKAGE_IGNORE in scripts/skilllib.py; this script
+# stays stdlib-only so it can run from a bare hub checkout. tests/test_hub.py asserts they match.
+PACKAGE_IGNORE = ("evals", "__pycache__")
+
+
+def read_manifest_skills(manifest: object) -> list[dict]:
+    """Return manifest["skills"] after checking its shape. Raises ValueError for a malformed manifest."""
+    skills = manifest.get("skills") if isinstance(manifest, dict) else None
+    if not isinstance(skills, list) or not all(
+        isinstance(s, dict) and isinstance(s.get("name"), str) and isinstance(s.get("path"), str) for s in skills
+    ):
+        raise ValueError("hub manifest.json is malformed: expected a 'skills' list of objects with string 'name' and 'path'")
+    return skills
+
+
 def read_selection(config_path: Path, manifest: dict) -> list[str]:
     """Return the deduplicated, validated skill names from the consumer config. Raises ValueError."""
     config = tomllib.loads(config_path.read_text(encoding="utf-8"))
-    include = config.get("skills", {}).get("include", [])
+    section = config.get("skills")
+    if not isinstance(section, dict):
+        raise ValueError("config needs a [skills] table with an include list")
+    include = section.get("include", [])
     if not isinstance(include, list) or not all(isinstance(n, str) for n in include):
         raise ValueError("skills.include must be a list of skill names")
     wanted = list(dict.fromkeys(include))
     if not wanted:
         raise ValueError("skills.include is empty in config")
-    available = {s["name"] for s in manifest["skills"]}
+    available = {s["name"] for s in read_manifest_skills(manifest)}
     unknown = [n for n in wanted if n not in available]
     if unknown:
         raise ValueError(f"not in hub manifest: {', '.join(unknown)}. Available: {', '.join(sorted(available))}")
@@ -47,29 +65,49 @@ def hub_revision(hub: Path) -> str:
 
 def stage(hub: Path, manifest: dict, wanted: list[str], staging: Path) -> None:
     """Copy the selected skills and a revision marker into a fresh staging directory."""
-    by_name = {s["name"]: s for s in manifest["skills"]}
+    by_name = {s["name"]: s for s in read_manifest_skills(manifest)}
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
     for name in wanted:
-        shutil.copytree(hub / by_name[name]["path"], staging / name, ignore=shutil.ignore_patterns("evals", "__pycache__"))
+        shutil.copytree(hub / by_name[name]["path"], staging / name, ignore=shutil.ignore_patterns(*PACKAGE_IGNORE))
     (staging / ".hub-version").write_text(f"{hub_revision(hub)}\n", encoding="utf-8")
 
 
-def replace_dest(staging: Path, dest: Path) -> None:
-    """Swap the staged directory into place, keeping the old one until the swap succeeds."""
-    backup = dest.with_name(f".{dest.name}.old")
-    if backup.exists():
-        shutil.rmtree(backup)
+def backup_path(dest: Path) -> Path:
+    return dest.with_name(f".{dest.name}.old")
+
+
+def recover_interrupted_swap(dest: Path) -> None:
+    """Heal the state a crashed run can leave behind. Safe to call at any time.
+
+    A run that died between `dest -> backup` and `staging -> dest` leaves no dest and the previous
+    skills only in the backup, so the backup is restored. When dest exists, any backup is a stale
+    leftover of a swap that did finish, so it is removed.
+    """
+    backup = backup_path(dest)
+    if not backup.exists():
+        return
     if dest.exists():
+        shutil.rmtree(backup)
+    else:
+        backup.rename(dest)
+
+
+def replace_dest(staging: Path, dest: Path) -> None:
+    """Swap the staged directory into place. The old copy is deleted only after the swap succeeds."""
+    recover_interrupted_swap(dest)  # after this, a backup never exists while dest is missing
+    backup = backup_path(dest)
+    had_dest = dest.exists()
+    if had_dest:
         dest.rename(backup)
     try:
         staging.rename(dest)
     except OSError:
-        if backup.exists():
+        if had_dest:
             backup.rename(dest)
         raise
-    if backup.exists():
+    if had_dest:
         shutil.rmtree(backup)
 
 
@@ -82,6 +120,7 @@ def main() -> int:
 
     staging = args.dest.with_name(f".{args.dest.name}.staging")
     try:
+        recover_interrupted_swap(args.dest)  # first, so a failed run below cannot leave dest missing
         manifest = json.loads((args.hub / "manifest.json").read_text(encoding="utf-8"))
         wanted = read_selection(args.config, manifest)
         args.dest.parent.mkdir(parents=True, exist_ok=True)

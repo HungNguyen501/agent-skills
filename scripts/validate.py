@@ -17,10 +17,12 @@ from skilllib import MAX_BODY_LINES, MAX_BODY_TOKENS, Skill
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 RESERVED = ("claude", "anthropic")
 XML_TAG_RE = re.compile(r"</?[A-Za-z][^>]*>")
-MD_LINK_RE = re.compile(r"\]\(([^)#\s]+)(?:#[^)]*)?\)")
+# Captures the destination of [text](dest), [text](dest#frag) and [text](dest "title"); anything after it up to `)` is ignored.
+MD_LINK_RE = re.compile(r"\]\(\s*<?([^)#\s>]+)>?[^)]*\)")
 FIRST_PERSON_RE = re.compile(r"^(i|you|we)\b|\b(i can|you can|i will|i help)\b", re.IGNORECASE)
 KNOWN_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 MIN_EVALS = 3
+ORDER_RE = re.compile(r"[0-9]+")  # ASCII digits only: str.isdigit() accepts characters such as "²" that int() rejects
 
 Findings = tuple[list[str], list[str]]  # (errors, warnings)
 
@@ -89,8 +91,9 @@ def check_metadata(skill: Skill, rel: Path) -> list[str]:
         return errors + [f"{rel}: metadata must be a mapping, got {type(metadata).__name__}"]
     errors += [f"{rel}: metadata.{key} must be a string (quote it)" for key, value in metadata.items() if not isinstance(value, str)]
     order = metadata.get("order")
-    if order is not None and not str(order).isdigit():
-        errors.append(f"{rel}: metadata.order must be a non-negative integer string, got '{order}'")
+    # Non-string values are already reported above, so only strings are checked here.
+    if isinstance(order, str) and not ORDER_RE.fullmatch(order):
+        errors.append(f"{rel}: metadata.order must be a non-negative integer string of ASCII digits, got '{order}'")
     return errors
 
 
@@ -117,6 +120,10 @@ def _check_links(text: str, base: Path, root: Path, label: Path) -> tuple[list[s
         resolved.add(target)
         if not target.is_relative_to(root):
             errors.append(f"{label}: link '{link}' points outside the skill directory, so it will be missing once packaged")
+        elif set(target.relative_to(root).parts) & set(skilllib.PACKAGE_IGNORE):
+            errors.append(
+                f"{label}: link '{link}' points into {'/'.join(skilllib.PACKAGE_IGNORE)}, which are not packaged, so it will be missing once packaged"
+            )
         elif not target.exists():
             errors.append(f"{label}: links to missing file '{link}'")
     return errors, resolved
@@ -131,7 +138,11 @@ def check_references(skill: Skill, rel: Path) -> Findings:
     refs_dir = skill.path / "references"
     for ref in sorted(refs_dir.glob("**/*.md")) if refs_dir.is_dir() else []:
         ref_rel = _rel(ref)
-        ref_text = ref.read_text(encoding="utf-8")
+        try:
+            ref_text = ref.read_text(encoding="utf-8")
+        except (OSError, ValueError) as exc:  # ValueError includes UnicodeDecodeError
+            errors.append(f"{ref_rel}: cannot read reference ({exc.__class__.__name__}): {exc}")
+            continue
         if ref.resolve() not in linked:
             warnings.append(f"{ref_rel}: not linked from SKILL.md")
         if len(ref_text.splitlines()) > 100 and not re.search(r"^## Contents\b", ref_text, re.MULTILINE):
@@ -173,16 +184,19 @@ def check_skill(skill_dir: Path, seen: dict[str, Path]) -> Findings:
     except (ValueError, OSError) as exc:
         return [f"{rel}/SKILL.md: {exc}"], []
 
-    desc_errors, desc_warnings = check_description(skill, rel)
-    ref_errors, ref_warnings = check_references(skill, rel)
-    errors = (
-        check_name(skill, rel, seen)
-        + desc_errors
-        + check_metadata(skill, rel)
-        + check_size(skill, rel)
-        + ref_errors
-        + check_evals(skill, rel)
-    )
+    try:
+        desc_errors, desc_warnings = check_description(skill, rel)
+        ref_errors, ref_warnings = check_references(skill, rel)
+        errors = (
+            check_name(skill, rel, seen)
+            + desc_errors
+            + check_metadata(skill, rel)
+            + check_size(skill, rel)
+            + ref_errors
+            + check_evals(skill, rel)
+        )
+    except (ValueError, OSError) as exc:  # last resort so one unreadable file cannot stop the whole run
+        return [f"{rel}: validation aborted ({exc.__class__.__name__}): {exc}"], []
     return errors, desc_warnings + ref_warnings
 
 

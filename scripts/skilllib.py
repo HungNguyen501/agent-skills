@@ -10,6 +10,9 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / "skills"
 MAX_BODY_LINES = 500
 MAX_BODY_TOKENS = 5000
+# Names left out of packaged and synced skills (matched at any depth). validate.py rejects links into them.
+# Keep identical to PACKAGE_IGNORE in scripts/sync.py, which stays stdlib-only so it cannot import this module.
+PACKAGE_IGNORE = ("evals", "__pycache__")
 
 
 @dataclass

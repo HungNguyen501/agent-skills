@@ -37,7 +37,7 @@ def write_plugin_manifest(out: Path, domain: str, description: str) -> dict:
 def package_skill(out: Path, skill: skilllib.Skill) -> None:
     """Copy a skill into its domain plugin, leaving out evals and caches."""
     dest = out / "plugins" / skill.domain / "skills" / skill.path.name
-    shutil.copytree(skill.path, dest, ignore=shutil.ignore_patterns("evals", "__pycache__"))
+    shutil.copytree(skill.path, dest, ignore=shutil.ignore_patterns(*skilllib.PACKAGE_IGNORE))
 
 
 def manifest_entry(skill: skilllib.Skill) -> dict:
