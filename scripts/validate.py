@@ -194,38 +194,46 @@ def check_evals(skill: Skill, rel: Path) -> list[str]:
     return errors
 
 
-def check_skill(skill_dir: Path, seen: dict[str, Path]) -> Findings:
-    """Run every validator for one skill and aggregate their findings. Never raises on bad skill input."""
-    rel = _rel(skill_dir)
-    # os.walk in check_symlinks does not look at its own starting directory, and packaging follows links,
-    # so a symlinked skill or domain directory is rejected before anything is read through it.
-    root_errors = [
+def check_roots(skill_dir: Path) -> list[str]:
+    """Reject a symlinked skill or domain directory. os.walk in check_symlinks never inspects its own
+    starting directory and packaging follows links, so this runs before anything is read through them."""
+    return [
         f"{_rel(path)}: {label} must not be a symlink (packaging follows it)"
         for path, label in ((skill_dir, "skill directory"), (skill_dir.parent, "domain directory"))
         if path.is_symlink()
     ]
+
+
+def check_loaded(skill: Skill, rel: Path, seen: dict[str, Path]) -> Findings:
+    """Run every validator on a loaded skill and aggregate their findings."""
+    desc_errors, desc_warnings = check_description(skill, rel)
+    ref_errors, ref_warnings = check_references(skill, rel)
+    errors = (
+        check_name(skill, rel, seen)
+        + desc_errors
+        + check_metadata(skill, rel)
+        + check_size(skill, rel)
+        + ref_errors
+        + check_symlinks(skill)
+        + check_evals(skill, rel)
+    )
+    return errors, desc_warnings + ref_warnings
+
+
+def check_skill(skill_dir: Path, seen: dict[str, Path]) -> Findings:
+    """Load one skill and validate it. Never raises on bad skill input, so one skill cannot stop the run."""
+    rel = _rel(skill_dir)
+    root_errors = check_roots(skill_dir)
     if root_errors:
         return root_errors, []
     try:
         skill = skilllib.load(skill_dir)
     except (ValueError, OSError) as exc:
         return [f"{rel}/SKILL.md: {exc}"], []
-
     try:
-        desc_errors, desc_warnings = check_description(skill, rel)
-        ref_errors, ref_warnings = check_references(skill, rel)
-        errors = (
-            check_name(skill, rel, seen)
-            + desc_errors
-            + check_metadata(skill, rel)
-            + check_size(skill, rel)
-            + ref_errors
-            + check_symlinks(skill)
-            + check_evals(skill, rel)
-        )
-    except (ValueError, OSError, RuntimeError) as exc:  # last resort so one unreadable file cannot stop the whole run
+        return check_loaded(skill, rel, seen)
+    except (ValueError, OSError, RuntimeError) as exc:  # last resort: an unreadable file or symlink loop
         return [f"{rel}: validation aborted ({exc.__class__.__name__}): {exc}"], []
-    return errors, desc_warnings + ref_warnings
 
 
 def main() -> int:

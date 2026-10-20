@@ -68,6 +68,22 @@ def _parse_order(value: object) -> int:
         raise ValueError(f"metadata.order must be an integer, got {value!r}") from None
 
 
+def _load_skill(md: Path) -> Skill:
+    """Parse one SKILL.md into a Skill. Any malformed input raises ValueError that names the file."""
+    try:
+        meta, body = _parse(md.read_text(encoding="utf-8"))
+        name = meta.get("name")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"name must be a non-empty string, got {name!r}")
+        raw_meta = meta.get("metadata")
+        md_meta = raw_meta if isinstance(raw_meta, dict) else {}
+        always = str(md_meta.get("always", "false")).lower() == "true"
+        order = _parse_order(md_meta.get("order", 1000))
+    except (TypeError, ValueError, OSError) as exc:  # parsing one file's metadata; never lose the file name
+        raise ValueError(f"{md}: {exc}") from exc
+    return Skill(name, str(meta.get("description", "")), always, order, body, md.parent)
+
+
 def discover(
     skills_dirs: str | Path | Iterable[str | Path],
     allow: set[str] | frozenset[str] | list[str] | None = None,
@@ -83,22 +99,13 @@ def discover(
     found: dict[str, Skill] = {}
     for skills_dir in dirs:
         for md in sorted(Path(skills_dir).glob("*/SKILL.md")):
-            try:
-                meta, body = _parse(md.read_text(encoding="utf-8"))
-                name = meta.get("name")
-                if not isinstance(name, str) or not name:
-                    raise ValueError(f"name must be a non-empty string, got {name!r}")
-                md_meta = meta.get("metadata") if isinstance(meta.get("metadata"), dict) else {}
-                always = str(md_meta.get("always", "false")).lower() == "true"
-                order = _parse_order(md_meta.get("order", 1000))
-            except (TypeError, ValueError, OSError) as exc:  # parsing one file's metadata; never lose the file name
-                raise ValueError(f"{md}: {exc}") from exc
-            if name in seen:
-                raise ValueError(f"duplicate skill name '{name}': {seen[name]} and {md.parent}")
-            seen[name] = md.parent
-            if allow is not None and name not in allow and not always:
+            skill = _load_skill(md)
+            if skill.name in seen:
+                raise ValueError(f"duplicate skill name '{skill.name}': {seen[skill.name]} and {md.parent}")
+            seen[skill.name] = md.parent
+            if allow is not None and skill.name not in allow and not skill.always:
                 continue
-            found[name] = Skill(name, str(meta.get("description", "")), always, order, body, md.parent)
+            found[skill.name] = skill
     return dict(sorted(found.items(), key=lambda kv: (kv[1].order, kv[0])))
 
 

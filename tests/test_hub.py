@@ -455,6 +455,52 @@ class SyncTests(TmpDirCase):
         ):
             self.assert_controlled_failure_keeps_dest(self.run_sync_raw(text))
 
+    def snapshot(self) -> list[str]:
+        return sorted(str(p.relative_to(self.tmp)) for p in self.tmp.rglob("*"))
+
+    def assert_rejected_without_side_effects(self, entries: list, include: list[str], label: str):
+        """The run must fail with exit 1 and leave the whole temp tree exactly as it was."""
+        (self.hub / "manifest.json").write_text(json.dumps({"skills": entries}), encoding="utf-8")
+        config = self.tmp / "sec.toml"
+        config.write_text(f"[skills]\ninclude = {json.dumps(include)}\n", encoding="utf-8")
+        before = self.snapshot()
+        argv = ["sync.py", "--hub", str(self.hub), "--config", str(config), "--dest", str(self.dest)]
+        with mock.patch.object(sys, "argv", argv), redirect_stdout(io.StringIO()):
+            code = sync.main()
+        self.assertEqual(code, 1, label)
+        self.assertEqual(self.snapshot(), before, f"{label}: files were created or removed")
+
+    def test_unsafe_manifest_names_and_paths_are_rejected_before_anything_is_written(self):
+        outside = self.tmp / "outside-src"
+        make_skill(self.tmp, "outside-src", files={"secret.txt": "do not copy"})  # a skill-shaped dir next to the hub
+        make_skill(self.hub / "other", "elsewhere")  # a skill inside the hub but outside skills/
+        symlink_or_skip(str(outside), self.hub / "skills" / "d" / "linked")
+        self.assertEqual(self.run_sync(["alpha"]), 0)  # an existing destination that must survive every case
+
+        good = {"name": "alpha", "path": "skills/d/alpha"}
+        cases = {
+            "name with ..": ([{"name": "../unexpected", "path": "skills/d/alpha"}], ["../unexpected"]),
+            "name with slash": ([{"name": "a/b", "path": "skills/d/alpha"}], ["a/b"]),
+            "absolute name": ([{"name": "/abs", "path": "skills/d/alpha"}], ["/abs"]),
+            "dotdot name": ([{"name": "..", "path": "skills/d/alpha"}], [".."]),
+            "uppercase name": ([{"name": "UPPER", "path": "skills/d/alpha"}], ["UPPER"]),
+            "empty name": ([{"name": "", "path": "skills/d/alpha"}], [""]),
+            "name too long": ([{"name": "x" * 65, "path": "skills/d/alpha"}], ["x" * 65]),
+            "absolute path": ([{"name": "alpha", "path": str(outside)}], ["alpha"]),
+            "parent-relative path": ([{"name": "alpha", "path": "../outside-src"}], ["alpha"]),
+            "path that climbs out": ([{"name": "alpha", "path": "skills/../../outside-src"}], ["alpha"]),
+            "empty path": ([{"name": "alpha", "path": "."}], ["alpha"]),
+            "path inside hub but outside skills/": ([{"name": "alpha", "path": "other/elsewhere"}], ["alpha"]),
+            "symlink path leaving the hub": ([{"name": "alpha", "path": "skills/d/linked"}], ["alpha"]),
+            "duplicate manifest names": ([good, {"name": "alpha", "path": "skills/d/beta"}], ["alpha"]),
+            "unsafe entry that is not selected": ([good, {"name": "../x", "path": "skills/d/beta"}], ["alpha"]),
+        }
+        for label, (entries, include) in cases.items():
+            self.assert_rejected_without_side_effects(entries, include, label)
+        self.assertTrue((self.dest / "alpha" / "SKILL.md").is_file())
+        self.assertFalse((self.dest.parent / "unexpected").exists())
+        self.assertFalse(any((self.dest / n).exists() for n in ("secret.txt", "outside-src")))
+
     def test_malformed_manifest_fails_cleanly_and_keeps_the_destination(self):
         good_manifest = (self.hub / "manifest.json").read_text(encoding="utf-8")
         self.assertEqual(self.run_sync(["alpha"]), 0)

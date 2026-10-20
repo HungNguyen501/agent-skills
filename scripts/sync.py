@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
 import tomllib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 # Names left out of synced skills. Keep identical to PACKAGE_IGNORE in scripts/skilllib.py; this script
@@ -29,13 +30,32 @@ from pathlib import Path
 PACKAGE_IGNORE = ("evals", "__pycache__")
 
 
+# A skill name is used as a directory name in the consumer, so it must be one safe path component.
+# Same rule as NAME_RE in scripts/validate.py.
+SAFE_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+
+
 def read_manifest_skills(manifest: object) -> list[dict]:
-    """Return manifest["skills"] after checking its shape. Raises ValueError for a malformed manifest."""
+    """Return manifest["skills"] after checking its shape, names and paths. Raises ValueError.
+
+    Names must be single safe directory names and unique. Paths must be relative with no `..` part;
+    resolve_sources() then enforces that they stay inside the hub.
+    """
     skills = manifest.get("skills") if isinstance(manifest, dict) else None
     if not isinstance(skills, list) or not all(
         isinstance(s, dict) and isinstance(s.get("name"), str) and isinstance(s.get("path"), str) for s in skills
     ):
         raise ValueError("hub manifest.json is malformed: expected a 'skills' list of objects with string 'name' and 'path'")
+    seen: set[str] = set()
+    for entry in skills:
+        name, path = entry["name"], PurePosixPath(entry["path"])
+        if len(name) > 64 or not SAFE_NAME.fullmatch(name):
+            raise ValueError(f"hub manifest.json lists unsafe skill name {name!r}: expected lowercase letters, digits and hyphens")
+        if name in seen:
+            raise ValueError(f"hub manifest.json lists skill name {name!r} more than once")
+        seen.add(name)
+        if path.is_absolute() or ".." in path.parts or not path.parts:
+            raise ValueError(f"hub manifest.json has an unsafe path for skill {name!r}: {entry['path']!r}")
     return skills
 
 
@@ -63,14 +83,34 @@ def hub_revision(hub: Path) -> str:
     return result.stdout.strip() or "unknown"
 
 
-def stage(hub: Path, manifest: dict, wanted: list[str], staging: Path) -> None:
-    """Copy the selected skills and a revision marker into a fresh staging directory."""
+def resolve_sources(hub: Path, manifest: dict, wanted: list[str]) -> list[tuple[str, Path]]:
+    """Resolve each selected skill to its source directory, which must be a skill inside the hub's skills/.
+
+    Runs before anything is created, so a bad manifest cannot write or read outside the hub.
+    Raises ValueError.
+    """
     by_name = {s["name"]: s for s in read_manifest_skills(manifest)}
+    skills_root = (hub.resolve() / "skills").resolve()
+    sources: list[tuple[str, Path]] = []
+    for name in wanted:
+        source = (hub.resolve() / by_name[name]["path"]).resolve()
+        if not source.is_relative_to(skills_root) or not (source / "SKILL.md").is_file():
+            raise ValueError(f"skill {name!r}: path {by_name[name]['path']!r} is not a skill directory inside the hub's skills/")
+        sources.append((name, source))
+    return sources
+
+
+def stage(hub: Path, sources: list[tuple[str, Path]], staging: Path) -> None:
+    """Copy the resolved skills and a revision marker into a fresh staging directory."""
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
-    for name in wanted:
-        shutil.copytree(hub / by_name[name]["path"], staging / name, ignore=shutil.ignore_patterns(*PACKAGE_IGNORE))
+    staging_root = staging.resolve()
+    for name, source in sources:
+        target = staging / name
+        if target.resolve().parent != staging_root:  # defence in depth; names are validated already
+            raise ValueError(f"skill {name!r} would be written outside the staging directory")
+        shutil.copytree(source, target, ignore=shutil.ignore_patterns(*PACKAGE_IGNORE))
     (staging / ".hub-version").write_text(f"{hub_revision(hub)}\n", encoding="utf-8")
 
 
@@ -123,8 +163,9 @@ def main() -> int:
         recover_interrupted_swap(args.dest)  # first, so a failed run below cannot leave dest missing
         manifest = json.loads((args.hub / "manifest.json").read_text(encoding="utf-8"))
         wanted = read_selection(args.config, manifest)
+        sources = resolve_sources(args.hub, manifest, wanted)  # validates everything before anything is created
         args.dest.parent.mkdir(parents=True, exist_ok=True)
-        stage(args.hub, manifest, wanted, staging)
+        stage(args.hub, sources, staging)
         replace_dest(staging, args.dest)
     except (ValueError, OSError, tomllib.TOMLDecodeError, json.JSONDecodeError) as exc:
         shutil.rmtree(staging, ignore_errors=True)
