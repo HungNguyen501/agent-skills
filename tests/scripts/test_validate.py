@@ -135,6 +135,30 @@ def test_check_skill_symlinks(tmp_path):
     assert sum("symlinks are not allowed" in e for e in errors_of(skill)) == 2
 
 
+def test_check_skill_symlinked_references_directory_is_not_read(tmp_path):
+    """The link is reported and nothing behind it is read, however large or broken the target tree is"""
+    external = tmp_path / "external"
+    (external / "deep").mkdir(parents=True)
+    (external / "bad-bytes.md").write_bytes(b"\xff\xfe invalid utf-8")
+    (external / "deep" / "long.md").write_text("line\n" * 150, encoding="utf-8")
+    (external / "deep" / "broken.md").write_text("See [x](missing.md).\n", encoding="utf-8")
+    skill = make_skill(tmp_path / "skills", "linked-refs")
+    symlink_or_skip(str(external), skill / "references")
+    reads: list[Path] = []
+    original_read_text = Path.read_text
+
+    def spy(self, *args, **kwargs):
+        reads.append(self)
+        return original_read_text(self, *args, **kwargs)
+
+    with patch.object(Path, "read_text", spy):
+        errors = errors_of(skill)
+    assert contains(errors, "symlinks are not allowed")
+    assert not contains(errors, "cannot read reference")  # the bad bytes behind the link were never opened
+    assert not contains(errors, "Contents")
+    assert [p for p in reads if external in p.parents or p == external] == []
+
+
 def test_check_skill_symlink_loops(tmp_path):
     """Loops are reported without raising RuntimeError, and later skills are still checked"""
     looped = make_skill(tmp_path, "looped", body="See [a](references/loop.md) and [b](references/a.md).\n")

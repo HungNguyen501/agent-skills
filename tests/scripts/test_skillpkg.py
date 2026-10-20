@@ -80,6 +80,20 @@ def test_walk_packaged_prunes_excluded_directories(tmp_path):
     assert "evals" not in visited["."][0]
 
 
+def test_a_symlinked_root_yields_nothing(tmp_path):
+    """os.walk(followlinks=False) still walks a link it is handed as its start, so the root is checked first"""
+    target = tmp_path / "external"
+    (target / "sub").mkdir(parents=True)
+    (target / "a.md").write_text("a", encoding="utf-8")
+    (target / "sub" / "b.md").write_text("b", encoding="utf-8")
+    symlink_or_skip(str(target), tmp_path / "linked-root")
+    linked = tmp_path / "linked-root"
+    assert list(walk_packaged(linked)) == []
+    assert packaged_files(linked, ".md") == []
+    assert find_symlinks(linked) == []
+    assert packaged_files(target, ".md") == [target / "a.md", target / "sub" / "b.md"]  # the same tree, as a real directory
+
+
 def test_ignore_patterns():
     """Exactly the names in PACKAGE_IGNORE are skipped"""
     names = ["SKILL.md", "evals", "__pycache__", "references", "tags", ".git"]

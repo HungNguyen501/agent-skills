@@ -20,7 +20,13 @@ def walk_packaged(root: Path) -> Iterator[tuple[Path, list[str], list[str]]]:
 
     PACKAGE_IGNORE names are pruned at every depth with the same predicate copytree uses, and symlinked
     directories are listed but never descended into. This is the single definition of "what gets packaged".
+
+    A `root` that is itself a symlink yields nothing: os.walk(followlinks=False) only stops at links below its
+    starting point, so without this check a linked root would be traversed, and read, from its target. Callers that
+    need to reject a linked root report it themselves (validate.check_roots, and check_symlinks for subdirectories).
     """
+    if root.is_symlink():
+        return
     ignore = ignore_patterns()
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         skipped = ignore(dirpath, dirnames + filenames)
