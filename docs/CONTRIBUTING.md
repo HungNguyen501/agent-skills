@@ -7,7 +7,7 @@ Read the skill [writing-agent-skills](../skills/authoring/writing-agent-skills/S
 ```bash
 git clone --recurse-submodules <repo-url>
 uv sync
-uv run python -m unittest discover -s tests
+uv run pytest
 uv run python scripts/validate.py
 ```
 

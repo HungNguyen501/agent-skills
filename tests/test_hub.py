@@ -1,6 +1,6 @@
 """Regression tests for the validator, frontmatter parsing, loader and sync script.
 
-Run: uv run python -m unittest discover -s tests -v
+Run: uv run pytest
 """
 from __future__ import annotations
 

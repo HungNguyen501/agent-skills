@@ -5,5 +5,11 @@ description = "Central hub of agent skills: validation and build tooling."
 requires-python = ">=3.11"
 dependencies = ["pyyaml>=6.0"]
 
+[dependency-groups]
+dev = ["pytest>=8"]
+
 [tool.uv]
 package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
