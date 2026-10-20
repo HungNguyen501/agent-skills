@@ -11,7 +11,7 @@ uv run pytest
 uv run python scripts/validate.py
 ```
 
-Add a regression test in `tests/test_hub.py` for any bug fixed in `scripts/` or `runtimes/`.
+Add a regression test for any bug fixed in `scripts/` or `runtimes/`. Tests mirror the source tree (`scripts/validate.py` is tested in `tests/scripts/test_validate.py`, `runtimes/python/loader.py` in `tests/runtimes/python/test_loader.py`). They are plain pytest functions with a one-line docstring, `parametrize` for input and expected pairs, and shared builders imported from `tests/mocks.py`.
 
 ## Add a skill
 
@@ -30,7 +30,7 @@ Add a regression test in `tests/test_hub.py` for any bug fixed in `scripts/` or 
 - References are linked from `SKILL.md`, one level deep, and files over 100 lines start with `## Contents`.
 - `evals/evals.json` has at least 3 cases.
 - Links stay inside the skill and never point into `evals/` or `__pycache__/`, which are not packaged. Skills contain no symlinks, because packaging follows them.
-- Generated files (`plugins/`, `.claude-plugin/`, `manifest.json`) match `scripts/build.py` output.
+- Generated files (`plugins/`, `.claude-plugin/`) match `scripts/build.py` output.
 
 ## Hub rules
 
@@ -41,4 +41,4 @@ Add a regression test in `tests/test_hub.py` for any bug fixed in `scripts/` or 
 
 ## Consuming skills from another repo
 
-Claude Code and Codex repos install plugins. Custom runtimes use `scripts/sync.py` with a `skills.toml` and `runtimes/python/loader.py`. See the README.
+Claude Code and Codex repos install plugins. Custom runtimes pin the hub as a submodule and load skills with `runtimes/python/loader.py`. See the README.

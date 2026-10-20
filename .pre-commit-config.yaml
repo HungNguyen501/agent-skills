@@ -1,15 +1,17 @@
 repos:
   - repo: local
     hooks:
+      # always_run: both commands inspect the whole repository, and pre-commit drops deleted paths from
+      # its file list, so a deletion-only commit would otherwise skip them and leave stale output unchecked.
       - id: validate-skills
         name: validate skills
         entry: uv run python scripts/validate.py
         language: system
         pass_filenames: false
-        files: ^(skills/|scripts/)
+        always_run: true
       - id: build-check
         name: generated files up to date
         entry: uv run python scripts/build.py --check
         language: system
         pass_filenames: false
-        files: ^(skills/|scripts/|hub\.json$|plugins/|\.claude-plugin/|manifest\.json$)
+        always_run: true

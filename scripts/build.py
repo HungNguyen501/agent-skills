@@ -1,4 +1,4 @@
-"""Generate plugins/, .claude-plugin/marketplace.json and manifest.json from skills/.
+"""Generate plugins/ and .claude-plugin/marketplace.json from skills/.
 
 Never edit the generated files by hand. CI runs this and fails if the tree changes.
 Pass --check to verify without writing.
@@ -8,15 +8,17 @@ from __future__ import annotations
 import argparse
 import filecmp
 import json
+import os
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 
 import skilllib
+import skillpkg
 
 ROOT = skilllib.ROOT
-OUTPUTS = ("plugins", ".claude-plugin", "manifest.json")
+OUTPUTS = ("plugins", ".claude-plugin")
 META = json.loads((ROOT / "hub.json").read_text(encoding="utf-8"))
 
 
@@ -37,23 +39,11 @@ def write_plugin_manifest(out: Path, domain: str, description: str) -> dict:
 def package_skill(out: Path, skill: skilllib.Skill) -> None:
     """Copy a skill into its domain plugin, leaving out evals and caches."""
     dest = out / "plugins" / skill.domain / "skills" / skill.path.name
-    shutil.copytree(skill.path, dest, ignore=shutil.ignore_patterns(*skilllib.PACKAGE_IGNORE))
-
-
-def manifest_entry(skill: skilllib.Skill) -> dict:
-    return {
-        "name": skill.name,
-        "domain": skill.domain,
-        "description": skill.meta["description"],
-        "always": skill.always,
-        "order": skill.order,
-        "path": f"skills/{skill.domain}/{skill.path.name}",
-        "tokens": skilllib.estimate_tokens(skill.body),
-    }
+    shutil.copytree(skill.path, dest, ignore=skillpkg.ignore_patterns())
 
 
 def generate(out: Path) -> None:
-    """Coordinate the build: per-domain plugins, packaged skills, marketplace and manifest."""
+    """Coordinate the build: per-domain plugins, packaged skills and the marketplace."""
     domains = json.loads((skilllib.SKILLS_DIR / "domains.json").read_text(encoding="utf-8"))
     skills = [skilllib.load(p) for p in skilllib.discover()]
 
@@ -68,12 +58,22 @@ def generate(out: Path) -> None:
         out / ".claude-plugin" / "marketplace.json",
         {"name": META["name"], "owner": {"name": META["owner"]}, "plugins": plugins},
     )
-    _write_json(out / "manifest.json", {"version": META["version"], "skills": [manifest_entry(s) for s in skills]})
+
+
+def _owner_exec(path: Path) -> bool | None:
+    """The executable bit git tracks (owner), which copytree preserves, so a chmod-only change means the packaged
+    script is wrong. Group and other bits are not tracked by git, so they are ignored. None where the filesystem
+    has no meaningful exec bit (Windows), which makes the comparison a no-op there."""
+    if os.name == "nt":
+        return None
+    return bool(path.stat().st_mode & 0o100)
 
 
 def _same(a: Path, b: Path) -> bool:
     if a.is_file() or b.is_file():
-        return a.is_file() and b.is_file() and filecmp.cmp(a, b, shallow=False)
+        if not (a.is_file() and b.is_file()):
+            return False
+        return filecmp.cmp(a, b, shallow=False) and _owner_exec(a) == _owner_exec(b)
     if not (a.is_dir() and b.is_dir()):
         return False
     # ignore=[] because dircmp's default list skips names such as `tags` and `.git`, which packaging does copy.

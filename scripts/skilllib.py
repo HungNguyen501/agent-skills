@@ -10,9 +10,6 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = ROOT / "skills"
 MAX_BODY_LINES = 500
 MAX_BODY_TOKENS = 5000
-# Names left out of packaged and synced skills (matched at any depth). validate.py rejects links into them.
-# Keep identical to PACKAGE_IGNORE in scripts/sync.py, which stays stdlib-only so it cannot import this module.
-PACKAGE_IGNORE = ("evals", "__pycache__")
 
 
 @dataclass
@@ -21,25 +18,6 @@ class Skill:
     path: Path
     meta: dict
     body: str
-
-    @property
-    def name(self) -> str:
-        return str(self.meta.get("name", ""))
-
-    @property
-    def custom(self) -> dict:
-        """The metadata: mapping, or {} when it is absent or not a mapping (validate.py reports that)."""
-        value = self.meta.get("metadata")
-        return value if isinstance(value, dict) else {}
-
-    @property
-    def always(self) -> bool:
-        return str(self.custom.get("always", "false")).lower() == "true"
-
-    @property
-    def order(self) -> int:
-        """Prompt load order for consumers that concatenate skills; lower loads first."""
-        return int(self.custom.get("order", 1000))
 
 
 def estimate_tokens(text: str) -> int:

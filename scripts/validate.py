@@ -7,12 +7,12 @@ Malformed input must produce findings for that skill and never stop the run.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
 
 import skilllib
+import skillpkg
 from skilllib import MAX_BODY_LINES, MAX_BODY_TOKENS, Skill
 
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -125,10 +125,9 @@ def _check_links(text: str, base: Path, root: Path, label: Path) -> tuple[list[s
         resolved.add(target)
         if not target.is_relative_to(root):
             errors.append(f"{label}: link '{link}' points outside the skill directory, so it will be missing once packaged")
-        elif set(target.relative_to(root).parts) & set(skilllib.PACKAGE_IGNORE):
-            errors.append(
-                f"{label}: link '{link}' points into {'/'.join(skilllib.PACKAGE_IGNORE)}, which are not packaged, so it will be missing once packaged"
-            )
+        elif set(target.relative_to(root).parts) & set(skillpkg.PACKAGE_IGNORE):
+            ignored = "/".join(skillpkg.PACKAGE_IGNORE)
+            errors.append(f"{label}: link '{link}' points into {ignored}, which are not packaged, so it will be missing once packaged")
         elif not target.exists():
             errors.append(f"{label}: links to missing file '{link}'")
     return errors, resolved
@@ -164,15 +163,13 @@ def check_references(skill: Skill, rel: Path) -> Findings:
 
 
 def check_symlinks(skill: Skill) -> list[str]:
-    """Skills must not contain symlinks: copytree would follow them while packaging, so a link can
-    pull in files from outside the skill or fail on a loop. Symlinked directories are not descended."""
-    errors: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(skill.path, followlinks=False):
-        for name in dirnames + filenames:
-            path = Path(dirpath) / name
-            if path.is_symlink():
-                errors.append(f"{_rel(path)}: symlinks are not allowed in skills (packaging follows them)")
-    return errors
+    """Skills must not contain symlinks in anything that gets packaged: copying would follow them, so a link
+    can pull in files from outside the skill or fail on a loop. The walk is skillpkg.find_symlinks, which skips
+    the same names build.py leaves out, so a link is rejected exactly when packaging would follow it."""
+    return [
+        f"{_rel(path)}: symlinks are not allowed in skills (packaging follows them)"
+        for path in skillpkg.find_symlinks(skill.path)
+    ]
 
 
 def check_evals(skill: Skill, rel: Path) -> list[str]:

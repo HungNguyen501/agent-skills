@@ -1,7 +1,7 @@
 """Reference loader for custom agent runtimes (OpenAI function calling or any chat API).
 
-Reads skills laid out as <skills_dir>/<name>/SKILL.md, as written by scripts/sync.py.
-Requires PyYAML. Copy this file into the consumer, or import it from the hub checkout.
+Reads skills laid out as <skills_dir>/<name>/SKILL.md, which is how each hub domain directory
+(skills/<domain>/) is laid out. Requires PyYAML. Copy this file into the consumer, or import it from the hub checkout.
 
 Loading modes:
   router: build_menu() feeds a small model that returns skill names; system_prompt() then
@@ -76,7 +76,9 @@ def _load_skill(md: Path) -> Skill:
         if not isinstance(name, str) or not name:
             raise ValueError(f"name must be a non-empty string, got {name!r}")
         raw_meta = meta.get("metadata")
-        md_meta = raw_meta if isinstance(raw_meta, dict) else {}
+        if raw_meta is not None and not isinstance(raw_meta, dict):  # absent or null means no metadata; anything else is a mistake
+            raise ValueError(f"metadata must be a mapping, got {type(raw_meta).__name__}")
+        md_meta = raw_meta or {}
         always = str(md_meta.get("always", "false")).lower() == "true"
         order = _parse_order(md_meta.get("order", 1000))
     except (TypeError, ValueError, OSError) as exc:  # parsing one file's metadata; never lose the file name

@@ -13,3 +13,6 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# scripts/ and runtimes/python/ are not packages, so tests import their modules (validate, build, loader, ...) directly.
+# The tests directory is a package that mirrors the source tree, and shared mocks are imported as tests.mocks.
+pythonpath = ["scripts", "runtimes/python"]

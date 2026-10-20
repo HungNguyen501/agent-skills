@@ -10,7 +10,7 @@
 
 ## Repo layout
 
-The hub keeps one source of truth, `skills/<domain>/<skill-name>/`, and generates everything else with `scripts/build.py`. Never edit generated files: `plugins/`, `.claude-plugin/marketplace.json` and `manifest.json`. CI fails if they are out of date.
+The hub keeps one source of truth, `skills/<domain>/<skill-name>/`, and generates everything else with `scripts/build.py`. Never edit generated files: `plugins/` and `.claude-plugin/marketplace.json`. CI fails if they are out of date.
 
 Third-party skill repos live under `vendor/` as submodules pinned to a commit.
 
@@ -32,7 +32,7 @@ Third-party skill repos live under `vendor/` as submodules pinned to a commit.
 ## Custom runtimes
 
 For agents that call an LLM API directly (for example an OpenAI function-calling bot):
-- Sync a pinned set of skills at build time with `scripts/sync.py` and load them with `runtimes/python/loader.py`.
+- Pin the hub as a git submodule and load the skills you need with `runtimes/python/loader.py`, passing the domain directories to `discover()` and an `allow` list for routed skills.
 - Three loading modes: `router` (a small model picks skills from the menu), `tool` (the model calls `load_skill` and `read_skill_file`), `eager` (inject all).
 - Keep runtime-specific text (tool names, output formatting) in the consumer repo, not in hub skills.
 
