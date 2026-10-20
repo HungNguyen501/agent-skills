@@ -197,6 +197,15 @@ def check_evals(skill: Skill, rel: Path) -> list[str]:
 def check_skill(skill_dir: Path, seen: dict[str, Path]) -> Findings:
     """Run every validator for one skill and aggregate their findings. Never raises on bad skill input."""
     rel = _rel(skill_dir)
+    # os.walk in check_symlinks does not look at its own starting directory, and packaging follows links,
+    # so a symlinked skill or domain directory is rejected before anything is read through it.
+    root_errors = [
+        f"{_rel(path)}: {label} must not be a symlink (packaging follows it)"
+        for path, label in ((skill_dir, "skill directory"), (skill_dir.parent, "domain directory"))
+        if path.is_symlink()
+    ]
+    if root_errors:
+        return root_errors, []
     try:
         skill = skilllib.load(skill_dir)
     except (ValueError, OSError) as exc:

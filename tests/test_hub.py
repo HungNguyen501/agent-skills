@@ -156,6 +156,23 @@ class ValidatorTests(TmpDirCase):
         self.assertEqual(len(errors), 1)
         self.assertTrue("symlink loop" in errors[0] or "missing file" in errors[0] or "outside" in errors[0], errors)
 
+    def test_symlinked_skill_and_domain_roots_are_rejected(self):
+        skills = self.tmp / "skills"
+        real = make_skill(self.tmp / "real", "outside-skill")
+        (skills / "dom").mkdir(parents=True)
+        symlink_or_skip(str(real), skills / "dom" / "linked-skill")  # symlinked skill directory
+        real_domain = self.tmp / "real-domain"
+        make_skill(real_domain, "domain-skill")
+        symlink_or_skip(str(real_domain), skills / "linked-domain")  # symlinked domain directory
+        found = skilllib.discover(skills)
+        self.assertEqual(len(found), 2, found)  # discover sees both, so validate must reject them
+        by_label = {}
+        for skill_dir in found:
+            errors, _ = validate.check_skill(skill_dir, {})  # must not raise or read through the link
+            by_label[skill_dir.parent.name + "/" + skill_dir.name] = errors
+        self.assertTrue(any("skill directory must not be a symlink" in e for e in by_label["dom/linked-skill"]), by_label)
+        self.assertTrue(any("domain directory must not be a symlink" in e for e in by_label["linked-domain/domain-skill"]), by_label)
+
     def test_any_symlink_in_a_skill_is_rejected(self):
         skill = make_skill(self.tmp, "linked", files={"references/real.md": "# R\n"})
         symlink_or_skip("real.md", skill / "references" / "alias.md")
@@ -295,6 +312,40 @@ class LoaderTests(TmpDirCase):
         # handle_tool_call must return a result, not raise
         result = loader.handle_tool_call(skills, "read_skill_file", {"name": "files", "path": "assets/blob.bin"})
         self.assertIn("not UTF-8", result)
+
+
+class BuildTests(TmpDirCase):
+    def test_empty_skill_collection_builds_and_checks_cleanly(self):
+        with mock.patch.object(skilllib, "discover", return_value=[]):
+            first, second = self.tmp / "one", self.tmp / "two"
+            build.generate(first)
+            build.generate(second)
+        for name in build.OUTPUTS:
+            self.assertTrue((first / name).exists(), name)  # plugins/ exists even with no skills
+        self.assertEqual(json.loads((first / "manifest.json").read_text())["skills"], [])
+        for name in build.OUTPUTS:
+            self.assertTrue(build._same(first / name, second / name), name)
+
+    def test_comparison_sees_files_that_dircmp_ignores_by_default(self):
+        # dircmp skips names like `tags` and `.git` unless ignore=[]; packaging copies them, so --check must compare them.
+        for name in ("tags", ".git", "CVS"):
+            a, b = self.tmp / f"a-{name}", self.tmp / f"b-{name}"
+            for d in (a, b):
+                d.mkdir()
+                (d / "SKILL.md").write_text("same", encoding="utf-8")
+            (a / name).write_text("one", encoding="utf-8")
+            (b / name).write_text("two", encoding="utf-8")
+            self.assertFalse(build._same(a, b), f"changed {name}")
+            (b / name).unlink()
+            self.assertFalse(build._same(a, b), f"missing {name}")
+            (b / name).write_text("one", encoding="utf-8")
+            self.assertTrue(build._same(a, b), f"identical {name}")
+
+    def test_generated_tree_matches_the_committed_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            build.generate(Path(tmp))
+            for name in build.OUTPUTS:
+                self.assertTrue(build._same(Path(tmp) / name, ROOT / name), f"{name} is stale; run scripts/build.py")
 
 
 class ToolCallTests(TmpDirCase):

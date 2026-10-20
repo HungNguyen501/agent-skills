@@ -57,6 +57,9 @@ def generate(out: Path) -> None:
     domains = json.loads((skilllib.SKILLS_DIR / "domains.json").read_text(encoding="utf-8"))
     skills = [skilllib.load(p) for p in skilllib.discover()]
 
+    # Always create every output directory, so an empty skill collection still builds and checks cleanly.
+    (out / "plugins").mkdir(parents=True, exist_ok=True)
+    (out / ".claude-plugin").mkdir(parents=True, exist_ok=True)
     plugins = [write_plugin_manifest(out, d, domains[d]) for d in sorted({s.domain for s in skills})]
     for skill in skills:
         package_skill(out, skill)
@@ -73,7 +76,8 @@ def _same(a: Path, b: Path) -> bool:
         return a.is_file() and b.is_file() and filecmp.cmp(a, b, shallow=False)
     if not (a.is_dir() and b.is_dir()):
         return False
-    cmp = filecmp.dircmp(a, b)
+    # ignore=[] because dircmp's default list skips names such as `tags` and `.git`, which packaging does copy.
+    cmp = filecmp.dircmp(a, b, ignore=[])
     if cmp.left_only or cmp.right_only or cmp.funny_files:
         return False
     return all(_same(a / n, b / n) for n in cmp.common)
