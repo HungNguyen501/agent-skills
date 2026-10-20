@@ -2,7 +2,7 @@
 import pytest
 
 from skilllib import discover, estimate_tokens, load, parse_skill_md, split_frontmatter
-from tests.mocks import fm, make_skill
+from tests.mocks import DEEPLY_NESTED, fm, make_skill
 
 FRONT = 'name: demo\ndescription: Use when comparing ---\nmetadata:\n  always: "true"\n'
 
@@ -35,6 +35,12 @@ def test_parse_skill_md_malformed(test_input):
     """Malformed frontmatter raises ValueError"""
     with pytest.raises(ValueError):
         parse_skill_md(test_input)
+
+
+def test_parse_skill_md_deeply_nested_yaml():
+    """The parser's RecursionError becomes a ValueError, so callers that handle bad input see it"""
+    with pytest.raises(ValueError, match="invalid YAML frontmatter"):
+        parse_skill_md(f"---\nname: x\nmeta: {DEEPLY_NESTED}\n---\nbody\n")
 
 
 def test_parse_skill_md_strips_leading_blank_lines_from_body():

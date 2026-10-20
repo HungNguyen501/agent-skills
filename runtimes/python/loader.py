@@ -51,8 +51,8 @@ def _parse(text: str) -> tuple[dict, str]:
     front, body = _split_frontmatter(text)
     try:
         meta = yaml.safe_load(front) or {}
-    except yaml.YAMLError as exc:
-        raise ValueError(f"invalid YAML frontmatter: {exc}") from exc
+    except (yaml.YAMLError, RecursionError) as exc:  # RecursionError: deeply nested YAML
+        raise ValueError(f"invalid YAML frontmatter: {exc.__class__.__name__}: {exc}") from exc
     if not isinstance(meta, dict):
         raise ValueError("frontmatter is not a mapping")
     return meta, body.strip()

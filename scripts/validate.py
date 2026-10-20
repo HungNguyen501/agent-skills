@@ -10,6 +10,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 import skilllib
 import skillpkg
@@ -18,11 +19,10 @@ from skilllib import MAX_BODY_LINES, MAX_BODY_TOKENS, Skill
 NAME_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 RESERVED = ("claude", "anthropic")
 XML_TAG_RE = re.compile(r"</?[A-Za-z][^>]*>")
-# Inline links: [text](dest), [text](dest#frag), [text](dest "title") and [text](<dest with spaces>). Group 1 is the
-# angle-bracket form (spaces allowed), group 2 the plain form. Anything after the destination up to `)` is ignored.
-MD_LINK_RE = re.compile(r"\]\(\s*(?:<([^<>]+)>|([^)#\s<>]+))[^)]*\)")
-# Reference definitions: [ref]: dest, [ref]: <dest with spaces> "title". Up to three leading spaces, as in CommonMark.
-MD_REF_DEF_RE = re.compile(r"^ {0,3}\[[^\]]+\]:[ \t]*(?:<([^<>]+)>|(\S+))", re.MULTILINE)
+MD_LINK_START_RE = re.compile(r"\]\(\s*")  # where the destination of an inline link [text](dest ...) starts
+# Where the destination of a reference definition [ref]: dest "title" starts. Up to three leading spaces, as in CommonMark.
+MD_REF_DEF_START_RE = re.compile(r"^ {0,3}\[[^\]]+\]:[ \t]*", re.MULTILINE)
+ESCAPABLE = frozenset("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")  # a backslash before one of these is an escape
 FIRST_PERSON_RE = re.compile(r"^(i|you|we)\b|\b(i can|you can|i will|i help)\b", re.IGNORECASE)
 KNOWN_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 MIN_EVALS = 3
@@ -39,15 +39,41 @@ def _rel(path: Path) -> Path:
         return path
 
 
-def _local_links(text: str) -> list[str]:
-    """Local destinations of inline links and reference definitions, without fragments. Web and mail links are skipped.
+def _read_destination(text: str, start: int) -> str:
+    """Read a link destination that starts at `start`, following CommonMark: `<...>` (spaces allowed) or a run of
+    non-space characters with balanced parentheses, and backslash escapes before punctuation. Returns "" if invalid."""
+    angle = text.startswith("<", start)
+    i, depth, out = (start + 1 if angle else start), 0, []
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\" and i + 1 < len(text) and text[i + 1] in ESCAPABLE:
+            out.append(text[i + 1])
+            i += 2
+            continue
+        if angle:
+            if ch == ">":
+                return "".join(out)
+            if ch in "<\n":
+                return ""
+        elif ch.isspace() or (ch == ")" and depth == 0):
+            break
+        elif ch in "()":
+            depth += 1 if ch == "(" else -1
+        out.append(ch)
+        i += 1
+    return "" if angle else "".join(out)
 
-    Every definition counts, used or not, so a broken one cannot hide behind [text][ref]. Like the inline pattern,
-    this does not skip fenced code blocks.
+
+def _local_links(text: str) -> list[str]:
+    """Local file destinations of inline links and reference definitions. Web and mail links, and links that are
+    only a fragment, are skipped. The fragment is removed first and the path is then percent-decoded, so
+    `api%20guide.md#x` is the file `api guide.md`.
+
+    Every definition counts, used or not, so a broken one cannot hide behind [text][ref]. This does not skip fenced code blocks.
     """
-    found = [a or b for a, b in MD_LINK_RE.findall(text)] + [a or b for a, b in MD_REF_DEF_RE.findall(text)]
-    destinations = (m.split("#", 1)[0] for m in found)
-    return [d for d in destinations if d and "://" not in d and not d.startswith("mailto:")]
+    raw = [_read_destination(text, m.end()) for pattern in (MD_LINK_START_RE, MD_REF_DEF_START_RE) for m in pattern.finditer(text)]
+    local = [r for r in raw if r and "://" not in r and not r.startswith("mailto:")]
+    return [path for path in (unquote(r.split("#", 1)[0]) for r in local) if path]
 
 
 def check_name(skill: Skill, rel: Path, seen: dict[str, Path]) -> list[str]:
@@ -149,8 +175,8 @@ def check_references(skill: Skill, rel: Path) -> Findings:
     errors, linked = _check_links(skill.body, root, root, rel / "SKILL.md")
     warnings: list[str] = []
 
-    refs_dir = skill.path / "references"
-    for ref in sorted(refs_dir.glob("**/*.md")) if refs_dir.is_dir() else []:
+    # only what packaging ships: fixtures under evals/ or __pycache__/ and symlinks (reported separately) are not read
+    for ref in skillpkg.packaged_files(skill.path / "references", ".md"):
         ref_rel = _rel(ref)
         try:
             ref_resolved = ref.resolve()
@@ -188,7 +214,7 @@ def check_evals(skill: Skill, rel: Path) -> list[str]:
         return [f"{rel}: missing evals/evals.json"]
     try:
         cases = json.loads(evals_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as exc:
         return [f"{rel}: evals/evals.json is invalid: {exc}"]
     if not isinstance(cases, list) or len(cases) < MIN_EVALS:
         return [f"{rel}: evals/evals.json needs at least {MIN_EVALS} cases"]

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 # Names left out of packaged skills (matched at any depth).
@@ -15,20 +15,35 @@ def ignore_patterns() -> Callable[[str, list[str]], set[str]]:
     return shutil.ignore_patterns(*PACKAGE_IGNORE)
 
 
-def find_symlinks(root: Path) -> list[Path]:
-    """Every symlink under `root` that packaging would copy.
+def walk_packaged(root: Path) -> Iterator[tuple[Path, list[str], list[str]]]:
+    """os.walk over `root` that skips what packaging skips: yields (directory, subdirectory names, file names).
 
-    Names in PACKAGE_IGNORE are skipped with the same predicate copytree uses, so a link in a path that is
-    never copied is not reported. Symlinked directories are listed and never descended into.
+    PACKAGE_IGNORE names are pruned at every depth with the same predicate copytree uses, and symlinked
+    directories are listed but never descended into. This is the single definition of "what gets packaged".
     """
     ignore = ignore_patterns()
-    found: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         skipped = ignore(dirpath, dirnames + filenames)
         dirnames[:] = [d for d in dirnames if d not in skipped]
-        found += [
-            Path(dirpath) / name
-            for name in dirnames + [f for f in filenames if f not in skipped]
-            if (Path(dirpath) / name).is_symlink()
-        ]
-    return found
+        yield Path(dirpath), dirnames, [f for f in filenames if f not in skipped]
+
+
+def find_symlinks(root: Path) -> list[Path]:
+    """Every symlink under `root` that packaging would copy. A link in a path that is never copied is not reported."""
+    return [
+        directory / name
+        for directory, dirnames, filenames in walk_packaged(root)
+        for name in dirnames + filenames
+        if (directory / name).is_symlink()
+    ]
+
+
+def packaged_files(root: Path, suffix: str = "") -> list[Path]:
+    """Sorted regular files under `root` that packaging copies and whose name ends with `suffix`. Symlinks are
+    left out, because find_symlinks reports them and reading through a link is what the rule exists to prevent."""
+    return sorted(
+        directory / name
+        for directory, _, filenames in walk_packaged(root)
+        for name in filenames
+        if name.endswith(suffix) and not (directory / name).is_symlink()
+    )

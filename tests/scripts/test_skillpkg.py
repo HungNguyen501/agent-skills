@@ -1,7 +1,7 @@
 """Unit tests for module skillpkg"""
 import pytest
 
-from skillpkg import PACKAGE_IGNORE, find_symlinks, ignore_patterns
+from skillpkg import PACKAGE_IGNORE, find_symlinks, ignore_patterns, packaged_files, walk_packaged
 from tests.mocks import make_skill, symlink_or_skip
 
 
@@ -47,6 +47,37 @@ def test_find_symlinks_without_links_or_root(tmp_path):
     skill = make_skill(tmp_path / "skills", "s", files={"references/a.md": "x"})
     assert find_symlinks(skill) == []
     assert find_symlinks(tmp_path / "does-not-exist") == []
+
+
+def test_packaged_files(tmp_path, outside):
+    """Sorted regular files that packaging copies: no excluded directories at any depth, no symlinks, filtered by suffix"""
+    skill = make_skill(
+        tmp_path / "skills",
+        "s",
+        files={
+            "references/b.md": "b",
+            "references/a.md": "a",
+            "references/notes.txt": "t",
+            "references/deep/c.md": "c",
+            "references/evals/fixture.md": "x",
+            "references/__pycache__/cache.md": "x",
+        },
+    )
+    symlink_or_skip(str(outside), skill / "references" / "linked.md")
+    root = skill / "references"
+    assert packaged_files(root, ".md") == [root / "a.md", root / "b.md", root / "deep" / "c.md"]
+    assert packaged_files(root) == [root / "a.md", root / "b.md", root / "deep" / "c.md", root / "notes.txt"]
+    assert packaged_files(tmp_path / "does-not-exist", ".md") == []
+
+
+def test_walk_packaged_prunes_excluded_directories(tmp_path):
+    """Excluded directories are neither listed nor descended into"""
+    skill = make_skill(tmp_path / "skills", "s", files={"references/evals/x.md": "x", "references/ok.md": "ok"})
+    visited = {directory.relative_to(skill).as_posix(): (sorted(dirs), sorted(files)) for directory, dirs, files in walk_packaged(skill)}
+    assert "evals" not in visited
+    assert "references/evals" not in visited
+    assert visited["references"] == ([], ["ok.md"])
+    assert "evals" not in visited["."][0]
 
 
 def test_ignore_patterns():

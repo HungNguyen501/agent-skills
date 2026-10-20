@@ -1,8 +1,10 @@
 """Unit tests for module loader"""
+from unittest.mock import patch
+
 import pytest
 
 from loader import _parse, _split_frontmatter, discover, handle_tool_call, read_skill_file
-from tests.mocks import add_symlink_loops, fm, make_skill
+from tests.mocks import DEEPLY_NESTED, add_symlink_loops, fm, make_skill
 from validate import check_skill
 
 ALWAYS_ON = 'metadata:\n  always: "true"\n'
@@ -46,6 +48,21 @@ def test_parse_malformed(test_input):
     """Malformed frontmatter raises ValueError"""
     with pytest.raises(ValueError):
         _parse(test_input)
+
+
+def test_parse_deeply_nested_yaml():
+    """The parser's RecursionError becomes a ValueError"""
+    with pytest.raises(ValueError, match="invalid YAML frontmatter"):
+        _parse(f"---\nname: x\nmeta: {DEEPLY_NESTED}\n---\nbody\n")
+
+
+@patch(target="yaml.safe_load", side_effect=RecursionError("maximum recursion depth exceeded"))
+def test_discover_yaml_recursion_error_names_the_file(mock_load, tmp_path):
+    """A skill the parser cannot handle is reported by name, as a ValueError"""
+    make_skill(tmp_path, "nested")
+    with pytest.raises(ValueError, match="nested.*invalid YAML frontmatter.*RecursionError"):
+        discover(tmp_path)
+    assert mock_load.called
 
 
 def test_discover_duplicate_name_across_directories(tmp_path):

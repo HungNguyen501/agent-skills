@@ -1,11 +1,12 @@
 """Unit tests for module validate"""
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from build import package_skill
 from skilllib import discover, load
-from tests.mocks import add_symlink_loops, fm, make_skill, symlink_or_skip
+from tests.mocks import DEEPLY_NESTED_JSON, add_symlink_loops, fm, make_skill, symlink_or_skip
 from validate import _check_links, _local_links, check_skill, main
 
 
@@ -207,11 +208,112 @@ def test_local_links():
         ("[ref]: https://example.com/x", []),
         ("[ref]: mailto:a@b.c", []),
         ("[one](a.md) and [ref]: not at line start", ["a.md"]),
+        ("[ref](references/a(b).md)", ["references/a(b).md"]),  # balanced parentheses belong to the destination
+        ("[x](a(b(c)).md)", ["a(b(c)).md"]),
+        ('[x](a(b).md "Title")', ["a(b).md"]),
+        ("[x](a.md) text)", ["a.md"]),  # an unbalanced closing parenthesis ends the destination
+        ("[x](a\\(b.md)", ["a(b.md"]),  # a backslash escape
+        ("[x](references\\guide.md)", ["references\\guide.md"]),  # a backslash before a letter is literal
+        ("[x](references/api%20guide.md)", ["references/api guide.md"]),  # percent-encoding is decoded
+        ("[x](<a%20b.md>)", ["a b.md"]),
+        ("[x](a%23b.md#frag)", ["a#b.md"]),  # the fragment is cut before decoding, so %23 stays part of the name
+        ("[x](%2e%2e/outside.md)", ["../outside.md"]),  # an encoded traversal is still a traversal
+        ("[x](<unterminated.md)", []),
+        ("[ref]: a(b).md", ["a(b).md"]),
+        ("[ref]: references/api%20guide.md", ["references/api guide.md"]),
     ],
 )
 def test_local_links_forms(test_input, expected):
-    """Angle-bracket destinations may contain spaces, and reference definitions count as links"""
+    """Angle-bracket destinations may contain spaces, reference definitions count, and destinations are unescaped and decoded"""
     assert _local_links(test_input) == expected
+
+
+def test_check_skill_links_with_parentheses_and_percent_encoding(tmp_path):
+    """Existing files whose names need escaping validate and count as linked"""
+    body = "See [a](references/a(b).md), [g](references/api%20guide.md) and [d](<references/with space.md>).\n"
+    files = {"references/a(b).md": "# A\n", "references/api guide.md": "# G\n", "references/with space.md": "# S\n"}
+    skill = make_skill(tmp_path, "escaped", body=body, files=files)
+    errors, warnings = check_skill(skill, {})
+    assert errors == []
+    assert warnings == []
+
+
+@pytest.mark.parametrize(
+    "test_input, expected",
+    [
+        ("%2e%2e/outside.md", "outside the skill directory"),
+        ("references/missing%20file.md", "missing file 'references/missing file.md'"),
+        ("references/a(b).md", "missing file 'references/a(b).md'"),
+    ],
+    ids=["encoded-traversal", "encoded-missing", "parentheses-missing"],
+)
+def test_check_skill_decoded_link_is_still_checked(test_input, expected, tmp_path):
+    """Decoding the path must not let a broken or escaping link through"""
+    (tmp_path / "outside.md").write_text("x", encoding="utf-8")
+    skill = make_skill(tmp_path, "decoded", body=f"See [x]({test_input}).\n")
+    assert contains(errors_of(skill), expected)
+
+
+def test_check_skill_yaml_recursion_error(tmp_path):
+    """A RecursionError from the YAML parser is a finding for that skill, and the next skill is still checked"""
+    bad = make_skill(tmp_path, "nested")
+    good = make_skill(tmp_path, "good-after-nesting")
+    seen: dict = {}
+    with patch(target="yaml.safe_load", side_effect=RecursionError("maximum recursion depth exceeded")):
+        bad_errors = check_skill(bad, seen)[0]
+    assert contains(bad_errors, "invalid YAML")
+    assert contains(bad_errors, "RecursionError")
+    assert check_skill(good, seen)[0] == []
+
+
+def test_check_skill_deeply_nested_evals(tmp_path):
+    """A RecursionError from the JSON parser is a finding for that skill, and the next skill is still checked"""
+    bad = make_skill(tmp_path, "nested-evals", evals=None)
+    (bad / "evals").mkdir()
+    (bad / "evals" / "evals.json").write_text(DEEPLY_NESTED_JSON, encoding="utf-8")
+    good = make_skill(tmp_path, "good-after-evals")
+    seen: dict = {}
+    errors = check_skill(bad, seen)[0]
+    assert contains(errors, "evals/evals.json is invalid")
+    assert contains(errors, "maximum recursion depth")  # a RecursionError, not "extra data" or another JSON error
+    assert check_skill(good, seen)[0] == []
+
+
+@pytest.mark.parametrize("fixture_dir", ["evals", "__pycache__", "deeper/evals"])
+def test_check_skill_ignores_reference_fixtures_that_are_not_packaged(fixture_dir, tmp_path):
+    """Markdown under an excluded directory is never shipped, so a broken link, bad bytes or a long file there is no finding"""
+    outside = tmp_path / "outside.md"
+    outside.write_text("x", encoding="utf-8")
+    skill = make_skill(
+        tmp_path / "skills",
+        "fixtures",
+        body="See [a](references/a.md).\n",
+        files={
+            "references/a.md": "# A\n",
+            f"references/{fixture_dir}/bad-bytes.md": b"\xff\xfe invalid utf-8",
+            f"references/{fixture_dir}/broken-link.md": "See [x](missing.md) and [y](../../../../outside.md).\n",
+            f"references/{fixture_dir}/long.md": "line\n" * 150,
+        },
+    )
+    symlink_or_skip(str(outside), skill / "references" / fixture_dir / "linked.md")
+    assert check_skill(skill, {}) == ([], [])
+
+
+def test_check_skill_still_reads_reference_files_outside_the_excluded_directories(tmp_path):
+    """The same fixtures in a normal subdirectory are findings, so the exemption above is not just a disabled check"""
+    skill = make_skill(
+        tmp_path,
+        "shipped",
+        body="See [a](references/a.md).\n",
+        files={
+            "references/a.md": "# A\n",
+            "references/other/bad-bytes.md": b"\xff\xfe invalid utf-8",
+            "references/other/long.md": "line\n" * 150,
+        },
+    )
+    errors = errors_of(skill)
+    assert contains(errors, "cannot read reference")
+    assert contains(errors, "needs a '## Contents' section")
 
 
 def test_check_skill_angle_bracket_link_with_spaces(tmp_path):
