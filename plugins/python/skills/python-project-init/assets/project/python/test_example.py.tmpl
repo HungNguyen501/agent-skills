@@ -1,0 +1,16 @@
+"""Unit tests for the example module."""
+
+import pytest
+
+from @@import_root@@.example import slugify
+
+
+@pytest.mark.parametrize("text, expected", [("Order Sync", "order-sync"), ("  a__b  ", "a-b"), ("v2.0", "v2-0")])
+def test_slugify(text, expected):
+    assert slugify(text) == expected
+
+
+@pytest.mark.parametrize("text", ["", "---", "   "])
+def test_slugify_rejects_text_without_alphanumerics(text):
+    with pytest.raises(ValueError, match="Cannot build a slug"):
+        slugify(text)

@@ -1,0 +1,15 @@
+---
+extends: default
+
+rules:
+  line-length: disable  # Disable line-length limits
+  document-start: disable  # Don't require "---" at the start of YAML files
+  comments-indentation: disable  # Ignore comment indentation
+  comments: disable
+  truthy: disable  # Allow unquoted `yes` / `no` (also the `on:` key of GitHub workflows)
+  indentation:
+    spaces: 2  # Use 2 spaces for indentation
+    indent-sequences: consistent  # Allow list items to start at the parent indentation level
+  new-line-at-end-of-file: disable
+  trailing-spaces: disable
+  empty-lines: disable

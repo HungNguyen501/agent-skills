@@ -1,0 +1,41 @@
+# @@name@@
+
+@@description@@
+
+## Requirements
+
+- Python @@python@@ or later
+- [uv](https://docs.astral.sh/uv/) (package and environment manager)
+- Make
+
+## Getting started
+
+```bash
+make install            # dependencies and pre-commit hooks
+cp .env.example .env    # then fill in the values. .env is gitignored
+make lint               # ruff check and format check
+make typecheck          # mypy, strict
+make unit-tests         # pytest with coverage
+```
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `make install` | `uv sync` and install the pre-commit hooks |
+| `make lint` | `ruff check` and `ruff format --check` |
+| `make format` | Apply ruff fixes and formatting |
+| `make typecheck` | `mypy` in strict mode on `src/` |
+| `make lint-yaml` | `yamllint` on `.github/` and `configs/` |
+| `make unit-tests [path=<dir>]` | pytest with coverage. `COV_FAIL_UNDER=<n>` sets the coverage gate |
+| `make cleanup` | Remove caches and build artifacts |
+
+## Project structure
+
+@@structure@@
+
+`@@example_path@@` and its test are a worked example of the conventions. Delete them when real code arrives.
+
+## Working with AI coding agents
+
+[`AGENTS.md`](./AGENTS.md) holds the shared setup, commands and conventions for any coding agent.

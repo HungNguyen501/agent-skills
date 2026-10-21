@@ -1,0 +1,35 @@
+# Git Commit Message Instructions
+
+You must generate commit messages following the **Conventional Commits** format and the specific organizational structure below.
+
+## 1. Structure
+- **Format**: `<type>: <description>`
+- **Body**: Include a blank line after the title, followed by the issue URL.
+
+## 2. Allowed Types
+| Type | Description |
+| :--- | :--- |
+| **feat** | A new feature |
+| **fix** | A bug fix |
+| **chore** | Routine maintenance or tasks not affecting users |
+| **docs** | Documentation changes |
+| **style** | Formatting, semicolons, etc. (no logic change) |
+| **refactor** | Code changes (no bug fix or new feature) |
+| **perf** | Performance improvements |
+| **test** | Adding or updating tests |
+| **build** | Build system or external dependencies |
+| **ci** | CI/CD configuration and scripts |
+| **revert** | Reverts a previous commit |
+| **deps** | Dependency updates |
+| **security** | Security-related fixes or improvements |
+| **infra** | Infrastructure-related changes |
+
+## 3. Formatting Rules
+- **Mood**: Use the **imperative** mood (e.g., "Add feature" instead of "Added feature").
+- **Case**: The description should start with a capital letter.
+- **Length**: Keep the title line under 50 characters.
+- **Context**: If an issue link is available in the staged changes or branch name, include it.
+
+## 4. Examples
+- `fix: Adjust weekly report links to avoid incorrect headers`
+- `feat: Add SQL validation`

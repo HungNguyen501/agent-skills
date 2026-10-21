@@ -1,0 +1,6 @@
+{
+  "name": "scaffolding",
+  "description": "Generating the agent-facing layout (skills, instruction files, settings) of a new project for a given coding agent.",
+  "version": "0.1.0",
+  "license": "Apache-2.0"
+}

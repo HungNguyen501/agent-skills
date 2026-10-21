@@ -1,0 +1,21 @@
+"""Example module that shows this project's conventions. Delete it when real code arrives."""
+
+import re
+
+
+def slugify(text: str) -> str:
+    """Converts text to a lowercase, hyphen-separated slug.
+
+    Args:
+        text: Free-form text, for example a table or source name.
+
+    Returns:
+        The slug, for example "Order Sync" becomes "order-sync".
+
+    Raises:
+        ValueError: If the text has no letters or digits.
+    """
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    if not slug:
+        raise ValueError(f"Cannot build a slug from {text!r}")
+    return slug

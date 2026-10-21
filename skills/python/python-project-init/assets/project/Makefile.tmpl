@@ -1,0 +1,40 @@
+ProjectName := @@name@@
+
+MAKEFLAGS += -s
+path ?= .
+
+.DEFAULT_GOAL := help
+
+install:
+	@uv sync
+	@if [ -d .git ]; then uv run pre-commit install -c configs/.pre-commit-config.yaml; \
+	else echo "Not a git repository: run git init, then make install again to enable the pre-commit hooks."; fi
+
+lint:
+	@uv run ruff check . && uv run ruff format --check .
+
+format:  # format first so reflowed lines no longer trip E501, then apply fixes, then re-format imports
+	@uv run ruff format . && uv run ruff check --fix . && uv run ruff format .
+
+typecheck:
+	@uv run mypy
+
+lint-yaml:
+	@uv run yamllint -c configs/.yamllint .github configs
+
+unit-tests:  # path: project root by default, i.e.: make unit-tests path=.
+	@bash scripts/ci.sh run_unit_test $(path)
+
+cleanup:
+	@bash scripts/ci.sh cleanup
+
+.PHONY: install lint format typecheck lint-yaml unit-tests cleanup help
+help: Makefile
+	@echo "$(ProjectName) - Available Commands\n"
+	@echo "  make install                 - Install dependencies and pre-commit hooks"
+	@echo "  make lint                    - Run ruff check and ruff format --check"
+	@echo "  make format                  - Apply ruff fixes and formatting"
+	@echo "  make typecheck               - Run mypy (strict) on src"
+	@echo "  make lint-yaml               - Run yamllint on .github and configs"
+	@echo "  make unit-tests [path=<dir>] - Run pytest with coverage (COV_FAIL_UNDER=<n> sets the gate)"
+	@echo "  make cleanup                 - Remove caches and build artifacts"

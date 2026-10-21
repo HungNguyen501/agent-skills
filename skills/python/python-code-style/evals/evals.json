@@ -1,0 +1,52 @@
+[
+  {
+    "id": "review-defaults-and-except",
+    "skills": [
+      "python-code-style"
+    ],
+    "query": "Review: def add(item, bucket=[]):\n    try:\n        bucket.append(item)\n    except:\n        pass\n    return bucket",
+    "files": [],
+    "expected_behavior": [
+      "Flags the mutable default argument and recommends None with an in-body default",
+      "Flags the bare except and the silent pass",
+      "Does not rewrite unrelated code"
+    ]
+  },
+  {
+    "id": "imports",
+    "skills": [
+      "python-code-style"
+    ],
+    "query": "Fix imports: from os.path import join\nfrom mypkg.utils import Helper, helper_fn\nimport sys, json",
+    "files": [],
+    "expected_behavior": [
+      "Imports modules and packages, not individual names (typing and similar excepted)",
+      "One import per line",
+      "Orders groups: __future__, standard library, third party, local, each sorted"
+    ]
+  },
+  {
+    "id": "naming",
+    "skills": [
+      "python-code-style"
+    ],
+    "query": "Rename for style: class my_parser, def ParseFile(self), MAX = 3, variable userNameList",
+    "files": [],
+    "expected_behavior": [
+      "ClassName for classes, lower_with_under for functions and variables, CAPS_WITH_UNDER for constants",
+      "Does not put the type in the variable name (user_names, not user_name_list)"
+    ]
+  },
+  {
+    "id": "validation-assert",
+    "skills": [
+      "python-code-style"
+    ],
+    "query": "Validate user input with assert so the function raises when age is negative.",
+    "files": [],
+    "expected_behavior": [
+      "Says not to use assert for validating inputs or API misuse",
+      "Raises ValueError (or an appropriate built-in) explicitly"
+    ]
+  }
+]

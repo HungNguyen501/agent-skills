@@ -1,0 +1,150 @@
+[
+  {
+    "id": "pure-function-table",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Write unit tests for def parse_duration(value: str) -> int that converts '15m', '2h', '1d' (case and whitespace insensitive) to seconds and raises ValueError for '', '15', '0h', '1w', '-1h'.",
+    "files": [],
+    "expected_behavior": [
+      "Uses pytest.mark.parametrize for valid and invalid inputs, in separate tests",
+      "Uses pytest.raises(ValueError) for the invalid cases",
+      "Includes the whitespace and case variant from the spec",
+      "Has no loops or conditionals inside the test body"
+    ]
+  },
+  {
+    "id": "raises-match",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Test that load_config(path) raises ValueError with message \"missing 'freshness_column'\" when a table has no freshness column.",
+    "files": [],
+    "expected_behavior": [
+      "Uses pytest.raises with match= instead of comparing exc.value.args[0] with ==",
+      "Escapes or otherwise safely handles regex characters in the message",
+      "Tests one failure per with-block or per test"
+    ]
+  },
+  {
+    "id": "patch-where-used",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Write a test for send_report() in reports/mailer.py which does `from smtp_client import send` and calls send(body). I don't want a real email sent.",
+    "files": [],
+    "expected_behavior": [
+      "Patches the name where it is looked up (reports.mailer.send), not smtp_client.send",
+      "Asserts the call arguments with assert_called_once_with or call_args",
+      "Does not perform network access"
+    ]
+  },
+  {
+    "id": "filesystem-and-time",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Test save_snapshot(directory) which writes snapshot-<today>.json into a directory and returns the path.",
+    "files": [],
+    "expected_behavior": [
+      "Uses the tmp_path fixture, not a hardcoded /tmp path or manual shutil cleanup",
+      "Freezes or injects the clock instead of reading the real date",
+      "Asserts on the returned path and the written content"
+    ]
+  },
+  {
+    "id": "pyspark-dataframe",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Write a unit test for normalize_columns(df) which renames DataFrame columns to snake_case.",
+    "files": [],
+    "expected_behavior": [
+      "Reads the PySpark reference before writing",
+      "Uses a shared session-scoped spark fixture, not a new SparkSession inside the test",
+      "Builds the input DataFrame with an explicit schema or column list",
+      "Compares columns or sorted rows, not unordered collect() output"
+    ]
+  },
+  {
+    "id": "review-bad-test",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Review this test: def test_it():\n    for x in [1,2,3]:\n        if x > 1:\n            assert f(x) == x*2\n    try:\n        f(None)\n    except Exception:\n        pass",
+    "files": [],
+    "expected_behavior": [
+      "Flags the loop and conditional inside the test and recommends parametrize",
+      "Flags the try/except that can never fail and recommends pytest.raises",
+      "Flags the uninformative test name",
+      "Does not rewrite unrelated code"
+    ]
+  },
+  {
+    "id": "where-do-tests-go",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Where should I put tests for src/billing/invoice.py and how should I name them?",
+    "files": [],
+    "expected_behavior": [
+      "Mirrors the source tree: tests/billing/test_invoice.py",
+      "Names tests test_<function>_<scenario>",
+      "Suggests conftest.py for shared fixtures",
+      "Says to match the repo's existing layout if it differs"
+    ]
+  },
+  {
+    "id": "mock-external-clients",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Write a unit test for publish_events(topic) which reads KAFKA_BROKERS from the environment, builds a KafkaProducer from kafka and sends each event from get_events() with producer.send(topic=..., value=...). No real Kafka.",
+    "files": [],
+    "expected_behavior": [
+      "Reads the mocking reference before writing",
+      "Sets env vars with monkeypatch.setenv or patch.dict(os.environ, ..., clear=True), not real values",
+      "Patches KafkaProducer where publish_events looks it up",
+      "Asserts the exact send calls (call_args_list or assert_has_calls), not mock.called alone"
+    ]
+  },
+  {
+    "id": "context-manager-and-sequence",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Test fetch_all(client_factory) which does `with client_factory() as c:` and then calls c.get_page(n) until it raises NotFound; it returns the list of pages fetched.",
+    "files": [],
+    "expected_behavior": [
+      "Mocks the context manager through __enter__.return_value",
+      "Uses side_effect with a list ending in the exception to simulate pages then NotFound",
+      "Asserts the returned pages and the get_page call sequence"
+    ]
+  },
+  {
+    "id": "vacuous-assert",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Review: @patch('mod.send')\ndef test_notify(mock_send):\n    notify('x')\n    assert mock_send.is_called",
+    "files": [],
+    "expected_behavior": [
+      "Explains is_called is not a Mock attribute check: it auto-creates a truthy child mock so the assertion always passes",
+      "Recommends assert_called_once_with(...) with the expected arguments",
+      "Does not suggest .called alone as the final fix when arguments matter"
+    ]
+  },
+  {
+    "id": "coverage-gate-smoke-test",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "CI requires 100% coverage. Add a test for etl_job() which just calls three helpers and returns None.",
+    "files": [],
+    "expected_behavior": [
+      "Patches the three helpers and asserts each is called with the expected arguments and in order if order matters",
+      "Does not write a test with no assertions just to reach coverage",
+      "Mentions that coverage proves lines ran, not that behavior is checked"
+    ]
+  }
+]

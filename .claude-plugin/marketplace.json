@@ -13,6 +13,16 @@
       "name": "databricks",
       "source": "./plugins/databricks",
       "description": "Databricks system-table, metric-view and cost knowledge for data-platform assistants."
+    },
+    {
+      "name": "python",
+      "source": "./plugins/python",
+      "description": "Python conventions and project setup: code style, docstrings, unit tests and new-project scaffolding."
+    },
+    {
+      "name": "scaffolding",
+      "source": "./plugins/scaffolding",
+      "description": "Generating the agent-facing layout (skills, instruction files, settings) of a new project for a given coding agent."
     }
   ]
 }
