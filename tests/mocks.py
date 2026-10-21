@@ -1,6 +1,8 @@
 """Module implements mock objects and builders shared by the tests"""
 from pathlib import Path
+import importlib.util
 import json
+import sys
 
 import pytest
 
@@ -46,3 +48,12 @@ def add_symlink_loops(skill_dir: Path) -> None:
     symlink_or_skip("loop.md", refs / "loop.md")
     symlink_or_skip("b.md", refs / "a.md")
     symlink_or_skip("a.md", refs / "b.md")
+
+
+def load_script(path: Path, name: str):
+    """Import a skill script by file path, because skill folders are not packages"""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module  # dataclasses look the module up by name
+    spec.loader.exec_module(module)
+    return module

@@ -1,0 +1,66 @@
+[
+  {
+    "id": "pick-skills-by-name",
+    "skills": [
+      "scaffold-agent-repo-cc"
+    ],
+    "query": "Set up a new repo at ../my-service for Claude Code with the hub skills python-code-style and python-unit-tests.",
+    "files": [],
+    "expected_behavior": [
+      "Runs scripts/scaffold.py with --dry-run before writing anything",
+      "Installs each named skill under .claude/skills/<name>/ in the destination, not the hub's domain folder layout",
+      "Does not copy evals/ into the destination",
+      "Creates CLAUDE.md listing the installed skills only if it does not already exist"
+    ]
+  },
+  {
+    "id": "unknown-skill-name",
+    "skills": [
+      "scaffold-agent-repo-cc"
+    ],
+    "query": "Scaffold ../app for Claude Code with the hub skill python-style-guide.",
+    "files": [],
+    "expected_behavior": [
+      "Reports that python-style-guide does not exist and shows the available names from the script error",
+      "Asks or suggests python-code-style instead of inventing a skill",
+      "Writes nothing to the destination"
+    ]
+  },
+  {
+    "id": "existing-instructions",
+    "skills": [
+      "scaffold-agent-repo-cc"
+    ],
+    "query": "Add python-docstrings to ../legacy-repo for Claude Code. It already has CLAUDE.md with our team rules.",
+    "files": [],
+    "expected_behavior": [
+      "Leaves the existing CLAUDE.md untouched",
+      "Installs the skill and tells the user the instruction file was kept",
+      "Does not pass --force"
+    ]
+  },
+  {
+    "id": "red-herring-wrong-target",
+    "skills": [
+      "scaffold-agent-repo-cc"
+    ],
+    "query": "Write a new skill for our hub that explains Databricks billing tables.",
+    "files": [],
+    "expected_behavior": [
+      "Does not run the scaffold script",
+      "Defers to writing-agent-skills for authoring a skill"
+    ]
+  },
+  {
+    "id": "wrong-harness",
+    "skills": [
+      "scaffold-agent-repo-cc"
+    ],
+    "query": "Scaffold ../app for Codex with python-code-style.",
+    "files": [],
+    "expected_behavior": [
+      "Recognises the request is for Codex, not Claude Code, and does not write .claude/skills/",
+      "Points to the Codex scaffold skill"
+    ]
+  }
+]

@@ -1,0 +1,107 @@
+[
+  {
+    "id": "function-docstring",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "Add a docstring to: def fetch_rows(table: str, limit: int = 100) -> list[dict]: which raises ConnectionError if the DB is unreachable and returns the rows.",
+    "files": [],
+    "expected_behavior": [
+      "Uses triple double quotes with a one-line summary ending in a period",
+      "Uses Google-style Args:, Returns: and Raises: sections",
+      "Does not repeat types in Args because the signature is annotated",
+      "Uses descriptive voice ('Fetches rows...') unless the file already uses imperative"
+    ]
+  },
+  {
+    "id": "unannotated-types",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "Document def restock(items, name, quantity): which raises ValueError if quantity <= 0 and returns the new count. No annotations exist.",
+    "files": [],
+    "expected_behavior": [
+      "Puts types in parentheses in Args and Returns because the signature has none",
+      "Includes a Raises: ValueError entry",
+      "Does not modify the function body or signature"
+    ]
+  },
+  {
+    "id": "generator-and-class",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "Document this generator function and the class it lives in: class Reader with attributes path and encoding; def lines(self): yields each stripped line.",
+    "files": [],
+    "expected_behavior": [
+      "Uses Yields: instead of Returns: for the generator",
+      "Class docstring has an Attributes: section for public attributes",
+      "Does not document __init__ separately when the class docstring covers its arguments"
+    ]
+  },
+  {
+    "id": "trivial-and-override",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "Should I write docstrings for a @override method that does the same as its parent, and for a private two-line helper _norm(x)?",
+    "files": [],
+    "expected_behavior": [
+      "Says an @override method needs no docstring unless its behavior differs materially",
+      "Says a short obviously-named private helper may use a one-line docstring or none",
+      "Does not demand full Args/Returns sections for trivial code"
+    ]
+  },
+  {
+    "id": "numpy-requested",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "Write a NumPy-style docstring for def area(w: float, h: float) -> float.",
+    "files": [],
+    "expected_behavior": [
+      "Reads and follows the NumPy reference: Parameters and Returns headings underlined with hyphens",
+      "Uses 'name : type' form for parameters",
+      "Does not mix in Google-style Args: sections"
+    ]
+  },
+  {
+    "id": "match-existing-style",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "This file's docstrings all use :param x: and :returns: fields. Add one for def scale(v, k).",
+    "files": [],
+    "expected_behavior": [
+      "Detects the existing Sphinx style and uses it instead of defaulting to Google",
+      "Uses :param:, :type:, :returns: and :rtype: fields without blank lines between them"
+    ]
+  },
+  {
+    "id": "find-missing",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "Find and fix all missing docstrings in src/inventory.py.",
+    "files": [],
+    "expected_behavior": [
+      "Runs scripts/find_undocumented.py on the file before writing anything",
+      "Documents only the definitions the script lists and leaves existing docstrings alone",
+      "Re-runs the script and repeats until it reports 0 undocumented",
+      "Leaves code unchanged apart from docstrings"
+    ]
+  },
+  {
+    "id": "setter-and-overload",
+    "skills": [
+      "python-docstrings"
+    ],
+    "query": "Find and fix all missing docstrings in shapes.py. The class has a property `side` with a @side.setter, and an @overload-decorated `scale` with two stubs.",
+    "files": [],
+    "expected_behavior": [
+      "Documents the property getter and the real scale implementation",
+      "Does not add docstrings to the setter or to the @overload stubs",
+      "Runs scripts/find_undocumented.py and reports 0 undocumented"
+    ]
+  }
+]

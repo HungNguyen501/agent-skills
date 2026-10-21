@@ -1,0 +1,6 @@
+{
+  "name": "python",
+  "description": "Python conventions and project setup: code style, docstrings, unit tests and new-project scaffolding.",
+  "version": "0.1.0",
+  "license": "Apache-2.0"
+}

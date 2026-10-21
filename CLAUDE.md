@@ -11,6 +11,7 @@ Central hub of agent skills. Source of truth is `skills/<domain>/<skill>/`. Read
 ## Rules
 
 - Never hand-edit generated files (`plugins/`, `.claude-plugin/`). Run build.py instead.
+- `skills/scaffolding/*/scripts/scaffold.py` are generated from `scripts/templates/scaffold.py.tmpl` (see `scripts/scaffold_gen.py`). Edit the template, then run build.py. `--check` fails when they differ.
 - Never edit `vendor/`. It holds pinned third-party submodules and is skipped by validate.py.
 - Hub skills hold domain knowledge only. Do not name a consumer's runtime tools or output format.
 - Skill names are unique across the whole hub.

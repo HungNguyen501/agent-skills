@@ -1,0 +1,53 @@
+# AGENTS.md
+
+## Project overview
+
+@@description@@
+
+Stack: Python @@python@@, `uv` for dependencies, `ruff` for lint and format, `mypy` for types, `pytest` for tests, Make for commands.
+
+## Working rules
+
+- Read `README.md` first for setup and the command list.
+- Match the shape of an existing module and its test before inventing a new pattern. `@@example_path@@` is the reference until real code exists.
+- Prefer small, focused changes. Do not bundle unrelated refactors into a feature or fix.
+- Do not invent new Make targets or scripts when an existing one covers the workflow.
+
+## Commands
+
+- Install: `make install` (uv sync and pre-commit hooks)
+- Lint: `make lint` (ruff check and format check) and `make lint-yaml` (yamllint)
+- Type check: `make typecheck` (mypy, strict)
+- Format: `make format`
+- Test: `make unit-tests` or `make unit-tests path=<dir>`
+- Full list: `make help`
+
+## Project structure
+
+@@structure@@
+
+## Code and docs conventions
+
+- Style follows the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html). Line length is @@line_length@@ and strings use double quotes (`pyproject.toml`, `[tool.ruff]`). Ruff enforces import order and Google-convention docstrings.
+- Docstrings use the Google format with `Args:`, `Returns:`, `Yields:` and `Raises:` sections. Skip repeating types that the signature already annotates.
+- Tests live in `tests/` and mirror the source tree: `@@src_hint@@/billing/invoice.py` is tested in `tests/billing/test_invoice.py`. Use `pytest.mark.parametrize`, `pytest.raises(..., match=...)`, `tmp_path` and `monkeypatch`. Shared fixtures go in `conftest.py`.
+- Credentials never appear in code, configs or logs. Read them from environment variables. Document each variable in `.env.example` with a placeholder value.
+
+## Testing and validation
+
+Before finishing a change:
+- `make lint`, `make lint-yaml` and `make typecheck` must pass.
+- `make unit-tests` must pass, and new behavior needs a test that fails without the change.
+- Do not lower the coverage gate or add `# noqa` to get a change through. Fix the cause.
+
+## Pull request guidance
+
+- Follow `.github/commit_template.md` (Conventional Commits) and fill out `.github/pull_request_template.md`.
+- Review your own diff against the checklist in the PR template before requesting review.
+
+## Boundaries
+
+- Never read, edit or commit `.env` or any `.env.*` file except `.env.example`. They hold live secrets.
+- Never hardcode credentials, tokens or connection strings.
+- Do not run deploy, publish or other shared or destructive commands without explicit confirmation.
+- Ask for clarification when a missing decision blocks safe progress instead of guessing.

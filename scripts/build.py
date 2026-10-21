@@ -1,4 +1,4 @@
-"""Generate plugins/ and .claude-plugin/marketplace.json from skills/.
+"""Generate plugins/ and .claude-plugin/marketplace.json from skills/, and the scaffold scripts from their template.
 
 Never edit the generated files by hand. CI runs this and fails if the tree changes.
 Pass --check to verify without writing.
@@ -14,6 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import scaffold_gen
 import skilllib
 import skillpkg
 
@@ -130,6 +131,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="fail if generated files are stale")
     args = parser.parse_args()
+
+    try:
+        stale_scripts = scaffold_gen.stale() if args.check else scaffold_gen.write_all()
+    except (ValueError, OSError) as exc:
+        print(f"error: {exc}")
+        return 1
+    if args.check and stale_scripts:
+        print(f"stale generated scripts: {', '.join(str(p) for p in stale_scripts)}. Run: uv run python scripts/build.py")
+        return 1
 
     with tempfile.TemporaryDirectory() as tmp:
         fresh = Path(tmp)

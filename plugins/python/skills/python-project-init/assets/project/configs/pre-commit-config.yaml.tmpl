@@ -1,0 +1,14 @@
+repos:
+  - repo: local
+    hooks:
+      - id: make-lint
+        name: Run make lint as pre-commit hook
+        entry: make lint
+        language: system
+        pass_filenames: false
+
+      - id: make-lint-yaml
+        name: Run make lint-yaml as pre-commit hook
+        entry: make lint-yaml
+        language: system
+        pass_filenames: false

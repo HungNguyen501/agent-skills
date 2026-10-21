@@ -1,0 +1,94 @@
+[
+  {
+    "id": "new-pipeline-app",
+    "skills": [
+      "python-project-init"
+    ],
+    "query": "Initialize a new Python project called order-sync in ~/work/order-sync. It's an ETL service that pulls orders from an API.",
+    "files": [],
+    "expected_behavior": [
+      "Gathers or defaults inputs: name order-sync, package order_sync, Python 3.12, app layout, line length 140",
+      "Runs scripts/init_project.py without --apply first and shows the plan to the user before applying",
+      "Result has pyproject.toml with uv and ruff config, Makefile with install, lint, typecheck, lint-yaml, unit-tests, scripts/ci.sh, configs/.pre-commit-config.yaml, .github/workflows/ci.yaml, AGENTS.md, .env.example and tests/ mirroring src/",
+      "After applying, installs every skill under skills/python/ except python-project-init with /scaffold-repo claude (dry run first)",
+      "Runs make install, make lint and make unit-tests in the new project and reports the results"
+    ]
+  },
+  {
+    "id": "installable-library",
+    "skills": [
+      "python-project-init"
+    ],
+    "query": "Bootstrap a shared library called vireox-utils that other repos will install as a wheel.",
+    "files": [],
+    "expected_behavior": [
+      "Chooses the lib layout: src/vireox_utils/ package with a hatchling build-system and a py.typed marker, not a bare src/ import root",
+      "Tests import vireox_utils, not src",
+      "Creates only .github/workflows/ci.yaml as a workflow"
+    ]
+  },
+  {
+    "id": "existing-files-conflict",
+    "skills": [
+      "python-project-init"
+    ],
+    "query": "Run the project init in ~/work/legacy where pyproject.toml and a Makefile already exist.",
+    "files": [],
+    "expected_behavior": [
+      "Dry run reports the existing files as conflicts and writes nothing",
+      "Does not overwrite or delete the files and does not invent a force option",
+      "Asks the user how to proceed, for example a different directory or merging by hand"
+    ]
+  },
+  {
+    "id": "no-agent-skills",
+    "skills": [
+      "python-project-init"
+    ],
+    "query": "Set up a new Python project my-tool. I don't want any agent skills installed, just the project.",
+    "files": [],
+    "expected_behavior": [
+      "Creates the project with the init script and verifies it",
+      "Skips the /scaffold-repo step",
+      "Still creates AGENTS.md"
+    ]
+  },
+  {
+    "id": "install-python-skills",
+    "skills": [
+      "python-project-init"
+    ],
+    "query": "Init a Python project in ~/work/billing, and give it the team's python skills.",
+    "files": [],
+    "expected_behavior": [
+      "Lists skills/python/ and picks every skill except python-project-init instead of a remembered list",
+      "Runs /scaffold-repo claude <dest> with those names, dry run shown before apply",
+      "Does not copy skill files by hand",
+      "Mentions the manifest pins the hub commit"
+    ]
+  },
+  {
+    "id": "not-this-skill",
+    "skills": [
+      "python-project-init"
+    ],
+    "query": "Add a new module for parsing invoices to my existing Python project.",
+    "files": [],
+    "expected_behavior": [
+      "Does not use python-project-init because the project already exists",
+      "Follows the existing project structure instead of scaffolding a new one"
+    ]
+  },
+  {
+    "id": "verify-failure",
+    "skills": [
+      "python-project-init"
+    ],
+    "query": "After init, make lint fails in the new project.",
+    "files": [],
+    "expected_behavior": [
+      "Reads the lint output and fixes the cause in the generated files instead of disabling the rule",
+      "Re-runs make lint, make typecheck, make lint-yaml and make unit-tests until all pass and reports what changed"
+    ]
+  }
+]

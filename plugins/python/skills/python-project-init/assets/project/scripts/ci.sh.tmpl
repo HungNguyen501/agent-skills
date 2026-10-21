@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# CI and local helpers behind the Makefile targets. Only the functions listed in the case below can be called.
+set -euo pipefail
+
+# Runs pytest with coverage. $1: directory that holds tests/ and src/ (default: project root).
+# COV_FAIL_UNDER is the coverage gate in percent. 0 never fails; raise it as the suite grows.
+run_unit_test() {
+    local location="${1:-.}"
+    uv run pytest "${location}/tests" \
+        --disable-warnings -vv \
+        --cov "${location}/src" \
+        --cov-report term-missing \
+        --cov-fail-under="${COV_FAIL_UNDER:-0}"
+}
+
+# Removes caches and the top-level dist/ and build/ artifacts. Nested folders that happen to be named build or dist are source, so they stay.
+# Paths are collected first and deleted after find ends. find -delete turns -prune off, and GNU find exits 1 when a folder
+# it is walking disappears, so deleting during the walk is not portable.
+cleanup() {
+    echo "Cleaning up..."
+    rm -rf ./dist ./build
+    find . \( -path ./.git -o -path './.venv*' -o -path './venv*' \) -prune -o \
+        \( -type d \( -name '__pycache__' -o -name '.pytest_cache' -o -name '.ruff_cache' -o -name '.mypy_cache' \
+            -o -name '*.egg-info' \) -print0 \) | xargs -0 rm -rf
+    find . \( -path ./.git -o -path './.venv*' -o -path './venv*' \) -prune -o \
+        \( -type f \( -name '*.py[co]' -o -name '*coverage.xml' -o -name '.coverage' \) -print0 \) | xargs -0 rm -f
+}
+
+case "${1:-}" in
+    run_unit_test | cleanup) "$@" ;;
+    *) echo "Usage: ci.sh run_unit_test [dir] | cleanup" >&2; exit 2 ;;
+esac

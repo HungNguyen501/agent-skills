@@ -1,0 +1,71 @@
+[project]
+name = "@@name@@"
+version = "0.1.0"
+description = "@@description@@"
+readme = "README.md"
+requires-python = ">=@@python@@"
+dependencies = []
+@@build_system@@
+[tool.uv]
+package = @@uv_package@@
+# Refuse versions published in the last 7 days, a supply-chain cooldown used across the team's repos.
+exclude-newer = "7 days"
+
+[dependency-groups]
+dev = [
+    "freezegun",
+    "mypy",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+    "yamllint",
+]
+
+[tool.ruff]
+line-length = @@line_length@@
+target-version = "@@ruff_target@@"
+# Skills installed from the hub are not project code. .venv and caches are excluded by default.
+extend-exclude = [".claude/skills", ".agents/skills"]
+
+[tool.ruff.lint]
+# E/F: errors and pyflakes. I: import order. UP: modern syntax. B: bugbear. SIM: simplifications.
+# D: docstrings, Google convention. Import order and docstrings are
+# enforced here so the style rules do not depend on review.
+select = ["E", "F", "I", "UP", "B", "SIM", "D"]
+# SIM108 prefers a ternary even when an if/else block reads better. D105/D107: the class docstring
+# documents magic methods and __init__ arguments.
+ignore = ["SIM108", "D105", "D107"]
+
+[tool.ruff.lint.isort]
+known-first-party = @@first_party@@
+# Must match format.skip-magic-trailing-comma below.
+split-on-trailing-comma = false
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 60
+quote-style = "double"
+skip-magic-trailing-comma = true
+
+[tool.mypy]
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = @@pythonpath@@
+addopts = "-ra --strict-markers --strict-config"
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+exclude_also = ["if TYPE_CHECKING:", "if __name__ == .__main__.:", "raise NotImplementedError", "@(abc\\.)?abstractmethod"]
