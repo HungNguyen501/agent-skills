@@ -351,10 +351,11 @@ def prepare(args):
     return errors, actions, manifest
 
 
-def print_plan(actions, instructions):
-    """Prints what an install would copy and whether the instruction file is written or kept."""
+def print_plan(actions, dest):
+    """Prints every change an install would make: the skills to copy and the files it writes or keeps."""
     for _name, src, target in actions:
         print(f"copy {src} -> {target}")
+    instructions = dest / INSTRUCTIONS
     print(f"{'keep existing' if present(instructions) else 'write'} {instructions}")
 
 
@@ -365,7 +366,7 @@ def main(argv=None):
     if errors:
         print("\n".join(f"error: {e}" for e in errors), file=sys.stderr)
         return 1
-    print_plan(actions, args.dest / INSTRUCTIONS)
+    print_plan(actions, args.dest)
     if args.dry_run:
         print("dry run: nothing written")
         return 0

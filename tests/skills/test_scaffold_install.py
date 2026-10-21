@@ -135,3 +135,44 @@ def test_old_copies_are_removed_after_a_successful_install(env):
     run("--skills", "alpha", "--force")
 
     assert sorted(p.name for p in skills_dir.iterdir()) == [".hub-skills.json", "alpha"]
+
+
+def test_dry_run_lists_the_extra_files_the_claude_layout_changes(env, capsys):
+    module, _, dest, _, run = env
+
+    assert run("--skills", "alpha", "--dry-run") == 0
+    out = capsys.readouterr().out
+
+    if module.EXTRA_FILES:
+        assert f"write {dest / '.claude/settings.example.json'}" in out
+        assert f"append .claude/settings.local.json to {dest / '.gitignore'}" in out
+    else:
+        assert "settings.example.json" not in out and ".gitignore" not in out
+    assert not (dest / ".gitignore").exists()  # a dry run still writes nothing
+
+
+def test_plan_shows_existing_extra_files_as_kept(env, capsys):
+    module, _, dest, _, run = env
+    if not module.EXTRA_FILES:
+        pytest.skip("this layout writes no extra files")
+    assert run("--skills", "alpha") == 0
+    capsys.readouterr()
+
+    assert run("--skills", "beta", "--dry-run") == 0
+    out = capsys.readouterr().out
+
+    assert f"keep existing {dest / '.claude/settings.example.json'}" in out
+    assert f"keep existing rule in {dest / '.gitignore'}" in out
+    assert "append" not in out
+
+
+def test_the_plan_matches_what_an_install_then_does(env):
+    module, _, dest, _, run = env
+    if not module.EXTRA_FILES:
+        pytest.skip("this layout writes no extra files")
+    (dest / ".gitignore").write_text("build/\n", encoding="utf-8")
+
+    assert run("--skills", "alpha") == 0
+
+    assert (dest / ".gitignore").read_text(encoding="utf-8") == "build/\n.claude/settings.local.json\n"
+    assert (dest / ".claude/settings.example.json").is_file()

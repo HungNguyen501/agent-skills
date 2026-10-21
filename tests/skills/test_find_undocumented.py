@@ -210,3 +210,34 @@ def test_a_comprehension_variable_does_not_rebind_the_alias(comprehension):
     source += 'class A:\n    """A."""\n    @ov\n    def m(self): pass\n'
 
     assert gaps(source) == []
+
+
+def test_a_name_bound_in_the_class_body_shadows_the_typing_import_for_that_class():
+    source = MODULE + "from typing import override\n" + (
+        'class A:\n    """A."""\n    override = staticmethod(lambda f: f)\n    @override\n    def m(self): pass\n'
+    )
+    assert gaps(source) == [("method", "A.m")]
+
+
+def test_a_class_level_def_shadows_the_typing_import():
+    source = MODULE + "from typing import override\n" + (
+        'class A:\n    """A."""\n    def override(f):\n        """O."""\n        return f\n    @override\n    def m(self): pass\n'
+    )
+    assert gaps(source) == [("method", "A.m")]
+
+
+def test_a_class_level_name_shadows_the_typing_module_alias():
+    source = MODULE + "import typing\n" + (
+        'class A:\n    """A."""\n    typing = object()\n    @typing.override\n    def m(self): pass\n'
+    )
+    assert gaps(source) == [("method", "A.m")]
+
+
+def test_a_shadow_in_one_class_does_not_leak_to_another_class_or_a_nested_one():
+    source = MODULE + "from typing import override\n" + (
+        'class A:\n    """A."""\n    override = None\n'
+        '    class Inner:\n        """I."""\n        @override\n        def n(self): pass\n'
+        'class B:\n    """B."""\n    @override\n    def m(self): pass\n'
+    )
+    # B is untouched by A's binding. A.Inner has its own scope, which does not see A's class-level names.
+    assert gaps(source) == []

@@ -29,42 +29,52 @@ _SKIPPED_DIRS = {"venv", "node_modules", "site-packages", "__pycache__"}
 _OWN_SCOPE = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 
 
-def _module_scope(tree):
-    """Every node that runs in the module's own scope: nested statements count, function, class and comprehension bodies do not."""
-    stack = [tree]
+def _scope_nodes(body):
+    """Every node that runs in the scope whose statements are `body`: nested statements count, function, class and
+    comprehension bodies do not (the def or class statement itself does, because it binds a name)."""
+    stack = list(reversed(body))
     while stack:
-        for child in ast.iter_child_nodes(stack.pop()):
-            yield child
-            if not isinstance(child, _OWN_SCOPE):
-                stack.append(child)
+        node = stack.pop()
+        yield node
+        if not isinstance(node, _OWN_SCOPE):
+            stack.extend(reversed(list(ast.iter_child_nodes(node))))
+
+
+def _bindings(body):
+    """(bound name, what it is) for every name bound in the scope of `body`.
+
+    `what` is "module" for `import typing` and friends, "overload" or "override" for `from typing import` of those two,
+    and None for any other binding: assignment, def, class, `except ... as`, any other import.
+    """
+    for node in _scope_nodes(body):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                is_typing = alias.name in _TYPING_MODULES
+                yield (alias.asname or (alias.name if is_typing else alias.name.split(".")[0])), "module" if is_typing else None
+        elif isinstance(node, ast.ImportFrom):
+            from_typing = node.level == 0 and node.module in _TYPING_MODULES
+            for alias in node.names:
+                yield alias.asname or alias.name, alias.name if from_typing and alias.name in _TYPING_EXEMPT else None
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler)) and node.name:
+            yield node.name, None  # a def or class statement, or the name of `except ... as name`
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            yield node.id, None
 
 
 def _typing_imports(tree):
     """(module aliases, {local name: overload or override}) imported from typing or typing_extensions at module level.
 
     A function-local import does not count for decorators elsewhere. A name that is also bound some other way at module
-    level (assigned, defined, imported from elsewhere, or used as an `except ... as` name) no longer refers to the
-    import, so it is dropped.
+    level no longer refers to the import, so it is dropped.
     """
     modules, names, rebound = set(), {}, set()
-    for node in _module_scope(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name in _TYPING_MODULES:
-                    modules.add(alias.asname or alias.name)
-                else:
-                    rebound.add(alias.asname or alias.name.split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            from_typing = node.level == 0 and node.module in _TYPING_MODULES
-            for alias in node.names:
-                if from_typing and alias.name in _TYPING_EXEMPT:
-                    names[alias.asname or alias.name] = alias.name
-                else:
-                    rebound.add(alias.asname or alias.name)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler)) and node.name:
-            rebound.add(node.name)  # a def or class statement, or the name of `except ... as name`
-        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-            rebound.add(node.id)
+    for bound, what in _bindings(tree.body):
+        if what == "module":
+            modules.add(bound)
+        elif what:
+            names[bound] = what
+        else:
+            rebound.add(bound)
     return modules - rebound, {k: v for k, v in names.items() if k not in rebound}
 
 
@@ -97,14 +107,14 @@ def find_undocumented(tree, include_private=False):
     """
     if ast.get_docstring(tree) is None:
         yield 1, "module", "<module>"
-    modules, names = _typing_imports(tree)
+    module_modules, module_names = _typing_imports(tree)
 
-    def visit(parent, prefix, in_class):
+    def visit(parent, prefix, in_class, modules, names):
         for node in ast.iter_child_nodes(parent):
             if not isinstance(node, _DEFS):
                 # Defs can hide inside if/try/with blocks.
                 if isinstance(node, _CONTAINERS):
-                    yield from visit(node, prefix, in_class)
+                    yield from visit(node, prefix, in_class, modules, names)
                 continue
 
             name = prefix + node.name
@@ -120,9 +130,13 @@ def find_undocumented(tree, include_private=False):
             # Functions nested in functions are implementation detail.
             # A private class is not public API, so its methods are not reported either, unless --all is given.
             if kind == "class" and is_public:
-                yield from visit(node, name + ".", True)
+                # A name bound in the class body shadows the module-level import for the decorators inside that class.
+                # A class body does not see the names of an enclosing class, so this starts again from the module level.
+                shadowed = {bound for bound, _ in _bindings(node.body)}
+                inner = (module_modules - shadowed, {k: v for k, v in module_names.items() if k not in shadowed})
+                yield from visit(node, name + ".", True, *inner)
 
-    yield from visit(tree, "", False)
+    yield from visit(tree, "", False, module_modules, module_names)
 
 
 def _python_files(paths, skip):
