@@ -12,10 +12,14 @@ import argparse
 import json
 import shutil
 import subprocess
+import re
 import sys
 import tempfile
+import uuid
 from pathlib import Path
 
+# One folder name: no separators and no leading dot, so a manifest entry can never point outside the skills folder.
+SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 SKILLS_DIR = ".agents/skills"
 INSTRUCTIONS = "AGENTS.md"
 # Names left out of copies: evals are test fixtures, not agent-facing content.
@@ -33,8 +37,19 @@ Installed from the agent-skills hub (see `{skills_dir}/.hub-skills.json`):
 
 
 def find_skills(hub):
-    """Maps skill name to directory for every skills/<domain>/<name>/SKILL.md under the hub."""
-    return {p.parent.name: p.parent for p in sorted((hub / "skills").glob("*/*/SKILL.md"))}
+    """Maps skill name to directory for every skills/<domain>/<name>/SKILL.md under the hub.
+
+    A skill reached through a symlinked domain folder, or one that resolves outside the hub's skills folder, is left out:
+    the script refuses to copy files that live elsewhere.
+    """
+    root = (hub / "skills").resolve()
+    found = {}
+    for path in sorted((hub / "skills").glob("*/*/SKILL.md")):
+        skill = path.parent
+        if skill.parent.is_symlink() or not skill.resolve().is_relative_to(root):
+            continue
+        found[skill.name] = skill
+    return found
 
 
 def describe(skill_dir):
@@ -94,30 +109,56 @@ def load_manifest(path):
         manifest = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"{path} is not valid JSON ({exc}). Fix or delete it, then rerun.") from exc
-    if not isinstance(manifest, dict) or not isinstance(manifest.get("skills", []), list):
-        raise ValueError(f"{path} is not a hub manifest (expected an object with a skills list). Fix or delete it, then rerun.")
+    # Everything later code indexes or joins into a path is checked here, so a bad file stops the run before any write.
+    skills = manifest.get("skills", []) if isinstance(manifest, dict) else None
+    revisions = manifest.get("revisions", {}) if isinstance(manifest, dict) else None
+    if skills is None or not isinstance(skills, list) or not all(isinstance(n, str) and SAFE_NAME.match(n) for n in skills):
+        raise ValueError(f"{path}: `skills` must be a list of skill folder names. Fix or delete the file, then rerun.")
+    if not isinstance(revisions, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in revisions.items()):
+        raise ValueError(f"{path}: `revisions` must map skill names to revision strings. Fix or delete the file, then rerun.")
+    if not isinstance(manifest.get("hub_revision", ""), str):
+        raise ValueError(f"{path}: `hub_revision` must be a string. Fix or delete the file, then rerun.")
     manifest.setdefault("skills", [])
     return manifest
 
 
 def install(actions, skills_dir):
-    """Copies each skill into a private staging folder, then swaps it in, so a failed copy leaves installed skills untouched."""
+    """Installs every skill or none: copies to private staging folders, then swaps each in with the old one kept as a backup.
+
+    Any failure restores the backups, removes what this run installed and cleans up staging, so skills that were already
+    installed are never lost to a half-applied --force.
+    """
     skills_dir.mkdir(parents=True, exist_ok=True)
-    staged = []
+    staged, done = [], []
     try:
         for name, src, target in actions:
             # mkdtemp gives a name no other process or user folder can hold, so cleanup only touches folders made here.
             staging = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=skills_dir))
             staged.append((staging, target))
             shutil.copytree(src, staging, ignore=IGNORE, dirs_exist_ok=True)
+        for staging, target in staged:
+            backup = target.with_name(f".{target.name}.old-{uuid.uuid4().hex}") if target.exists() else None
+            if backup:
+                target.rename(backup)
+            try:
+                staging.rename(target)
+            except Exception:
+                if backup:
+                    backup.rename(target)
+                raise
+            done.append((target, backup))
     except Exception:
+        for target, backup in reversed(done):
+            shutil.rmtree(target, ignore_errors=True)
+            if backup:
+                backup.rename(target)
+        raise
+    finally:
         for staging, _ in staged:
             shutil.rmtree(staging, ignore_errors=True)
-        raise
-    for staging, target in staged:
-        if target.exists():
-            shutil.rmtree(target)
-        staging.rename(target)
+    for _, backup in done:
+        if backup:
+            shutil.rmtree(backup, ignore_errors=True)
 
 
 def update_manifest(manifest, skills_dir, names, revision):
@@ -167,17 +208,18 @@ def main(argv=None):
     update_manifest(manifest, args.dest / SKILLS_DIR, {n for n, _, _ in actions}, hub_revision(args.hub))
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     if not instructions.exists():
-        lines = "\n".join(f"- `{n}`: {describe(args.hub / 'skills' / _domain(args.hub, n) / n)}" for n in manifest["skills"])
-        instructions.write_text(
-            INSTRUCTIONS_TEMPLATE.format(project=args.dest.resolve().name, skills_dir=SKILLS_DIR, skill_lines=lines),
-            encoding="utf-8")
+        write_instructions(args, manifest, instructions)
     print(f"installed {len(actions)} skill(s) into {args.dest / SKILLS_DIR}")
     return 0
 
 
-def _domain(hub, name):
-    """Returns the domain directory name that holds skill `name`."""
-    return find_skills(hub)[name].parent.name
+def write_instructions(args, manifest, instructions):
+    """Writes the instruction file listing the installed skills. A skill no longer in the hub is listed without a description."""
+    available = find_skills(args.hub)
+    lines = "\n".join(f"- `{n}`: {describe(available[n]) if n in available else '(not in this hub)'}" for n in manifest["skills"])
+    instructions.write_text(
+        INSTRUCTIONS_TEMPLATE.format(project=args.dest.resolve().name, skills_dir=SKILLS_DIR, skill_lines=lines),
+        encoding="utf-8")
 
 
 if __name__ == "__main__":

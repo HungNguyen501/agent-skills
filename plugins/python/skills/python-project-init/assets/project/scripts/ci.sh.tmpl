@@ -14,13 +14,16 @@ run_unit_test() {
 }
 
 # Removes caches and the top-level dist/ and build/ artifacts. Nested folders that happen to be named build or dist are source, so they stay.
+# Paths are collected first and deleted after find ends. find -delete turns -prune off, and GNU find exits 1 when a folder
+# it is walking disappears, so deleting during the walk is not portable.
 cleanup() {
     echo "Cleaning up..."
-    find . \
-        -path ./.git -prune -o -path './.venv*' -prune -o -path './venv*' -prune -o \
+    rm -rf ./dist ./build
+    find . \( -path ./.git -o -path './.venv*' -o -path './venv*' \) -prune -o \
         \( -type d \( -name '__pycache__' -o -name '.pytest_cache' -o -name '.ruff_cache' -o -name '.mypy_cache' \
-            -o -name '*.egg-info' -o -path ./dist -o -path ./build \) -print -exec rm -rf {} + \) -o \
-        \( -type f \( -name '*.py[co]' -o -name '*coverage.xml' -o -name '.coverage' \) -print -delete \)
+            -o -name '*.egg-info' \) -print0 \) | xargs -0 rm -rf
+    find . \( -path ./.git -o -path './.venv*' -o -path './venv*' \) -prune -o \
+        \( -type f \( -name '*.py[co]' -o -name '*coverage.xml' -o -name '.coverage' \) -print0 \) | xargs -0 rm -f
 }
 
 case "${1:-}" in

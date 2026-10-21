@@ -20,11 +20,15 @@ from pathlib import Path
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 TOKEN_RE = re.compile(r"@@(\w+)@@")
-NAME_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
-# 3.<minor> with no leading zero, so "3.012" is rejected rather than written into pyproject.toml.
-PYTHON_RE = re.compile(r"^3\.[1-9]\d?$")
+NAME_RE = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")  # used with fullmatch
+# Used with fullmatch: "$" would also accept a trailing newline.
+PYTHON_RE = re.compile(r"3\.([1-9]\d?)")
 # Python 3.9 reached end of life in October 2025, so older targets are rejected.
 MIN_MINOR = 10
+# Newest release the generated ruff target, mypy settings and CI were run against. The version goes into ruff's
+# target-version as py3<minor>, which ruff rejects when it does not know the release, so raise this only after
+# checking a newer one.
+MAX_MINOR = 14
 # Names that would shadow or clash with the project's own top-level folders.
 RESERVED_PACKAGES = {"src", "tests"}
 # Google style says 80. Both team repos use longer lines, so the default follows them. The bounds catch typos.
@@ -59,15 +63,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--apply", action="store_true", help="write the files (default: print the plan only)")
     args = p.parse_args(argv)
 
-    if not NAME_RE.match(args.name):
+    if not NAME_RE.fullmatch(args.name):
         p.error(f"--name must be lowercase letters, digits and single hyphens, got {args.name!r}")
     args.package = args.package or args.name.replace("-", "_")
     if not args.package.isidentifier() or args.package != args.package.lower() or args.package.startswith("_"):
         p.error(f"--package must be a lowercase Python identifier, got {args.package!r}")
     if keyword.iskeyword(args.package) or args.package in RESERVED_PACKAGES:
         p.error(f"--package {args.package!r} is a Python keyword or a reserved folder name (src, tests)")
-    if not PYTHON_RE.match(args.python) or int(args.python.split(".")[1]) < MIN_MINOR:
-        p.error(f"--python must look like 3.12 and be at least 3.{MIN_MINOR}, got {args.python!r}")
+    version = PYTHON_RE.fullmatch(args.python)
+    if not version or not MIN_MINOR <= int(version.group(1)) <= MAX_MINOR:
+        p.error(f"--python must be one of 3.{MIN_MINOR} to 3.{MAX_MINOR}, got {args.python!r}")
     if not LINE_LENGTH_MIN <= args.line_length <= LINE_LENGTH_MAX:
         p.error(f"--line-length must be between {LINE_LENGTH_MIN} and {LINE_LENGTH_MAX}")
     args.description = args.description or f"{args.name} Python project"

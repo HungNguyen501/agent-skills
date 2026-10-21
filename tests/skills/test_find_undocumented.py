@@ -90,3 +90,19 @@ def test_main_reports_missing_path_and_syntax_error_as_skipped(tmp_path, capsys)
 
     assert fu.main([str(broken), str(tmp_path / "nope.py")]) == 1
     assert "0 undocumented, 2 skipped" in capsys.readouterr().out
+
+
+PRIVATE_CLASSES = MODULE + "class _Internal:\n    def run(self): pass\nclass Public:\n    \"\"\"P.\"\"\"\n    class _Inner:\n        def go(self): pass\n"
+
+
+def test_private_class_and_its_members_are_not_public_api():
+    assert gaps(PRIVATE_CLASSES) == []
+
+
+def test_all_flag_reports_private_classes_and_their_members():
+    assert gaps(PRIVATE_CLASSES, include_private=True) == [
+        ("class", "_Internal"),
+        ("method", "_Internal.run"),
+        ("class", "Public._Inner"),
+        ("method", "Public._Inner.go"),
+    ]

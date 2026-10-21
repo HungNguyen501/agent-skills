@@ -27,7 +27,7 @@ def test_rejects_bad_package_names(tmp_path, capsys, package):
     assert "--package" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("version", ["3.9", "3.012", "3.", "4.0", "3.x", "2.7"])
+@pytest.mark.parametrize("version", ["3.9", "3.012", "3.", "4.0", "3.x", "2.7", "3.99", "3.15", "3.12\n", " 3.12"])
 def test_rejects_bad_python_versions(tmp_path, capsys, version):
     with pytest.raises(SystemExit):
         run(tmp_path / "p", "--python", version)
@@ -41,6 +41,19 @@ def test_rejects_descriptions_that_break_toml(tmp_path, capsys, description):
         run(tmp_path / "p", "--description", description)
 
     assert "--description" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("name", ["demo\n", "Demo", "demo_app", "-demo", "demo-", "demo--app", ""])
+def test_rejects_bad_project_names(tmp_path, capsys, name):
+    with pytest.raises(SystemExit):
+        ip.main([str(tmp_path / "p"), "--name", name])
+
+    assert "--name" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("version", ["3.10", "3.12", "3.14"])
+def test_accepts_the_supported_python_range(tmp_path, version):
+    assert run(tmp_path / "p", "--python", version) == 0
 
 
 def test_dry_run_writes_nothing(tmp_path, capsys):
@@ -131,16 +144,19 @@ def test_write_error_is_reported_without_a_traceback(tmp_path, capsys, monkeypat
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell script")
-def test_ci_script_cleanup_keeps_nested_build_and_dist(tmp_path):
+def test_ci_script_cleanup_removes_artifacts_and_keeps_source_venv_and_git(tmp_path):
     import subprocess
 
     dest = tmp_path / "p"
     run(dest, "--apply")
-    for rel in ("build", "dist", "src/build", "tests/dist", "src/__pycache__"):
+    for rel in ("build", "dist", "src/build", "tests/dist", "src/__pycache__", ".venv/lib/__pycache__", ".git/hooks/__pycache__", "tests/.mypy_cache"):
         (dest / rel).mkdir(parents=True)
         (dest / rel / "f.txt").write_text("x", encoding="utf-8")
 
-    subprocess.run(["bash", "scripts/ci.sh", "cleanup"], cwd=dest, check=True, capture_output=True)
+    result = subprocess.run(["bash", "scripts/ci.sh", "cleanup"], cwd=dest, capture_output=True, text=True)
 
+    assert result.returncode == 0, result.stderr
     assert not (dest / "build").exists() and not (dest / "dist").exists() and not (dest / "src/__pycache__").exists()
     assert (dest / "src/build/f.txt").exists() and (dest / "tests/dist/f.txt").exists()
+    assert not (dest / "tests/.mypy_cache").exists()
+    assert (dest / ".venv/lib/__pycache__/f.txt").exists() and (dest / ".git/hooks/__pycache__/f.txt").exists()

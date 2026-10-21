@@ -128,13 +128,13 @@ def test_corrupt_manifest_stops_before_any_write(env, capsys):
     assert not (skills_dir / "alpha").exists()
 
 
-def test_manifest_without_skills_list_is_rejected(env, capsys):
+def test_manifest_with_a_string_for_skills_is_rejected(env, capsys):
     _, _, _, skills_dir, run = env
     skills_dir.mkdir(parents=True)
     (skills_dir / ".hub-skills.json").write_text('{"skills": "alpha"}', encoding="utf-8")
 
     assert run("--skills", "beta") == 1
-    assert "not a hub manifest" in capsys.readouterr().err
+    assert "`skills` must be a list" in capsys.readouterr().err
 
 
 def test_manifest_records_a_revision_per_skill(env):
@@ -194,3 +194,99 @@ def test_instruction_file_is_written_once_and_never_overwritten(env):
     run("--skills", "beta")
 
     assert path.read_text(encoding="utf-8") == "mine\n"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        '{"skills": [null]}',
+        '{"skills": [1]}',
+        '{"skills": ["../escape"]}',
+        '{"skills": ["a/b"]}',
+        '{"skills": [".hidden"]}',
+        '{"skills": [], "revisions": []}',
+        '{"skills": [], "revisions": {"a": 1}}',
+        '{"skills": [], "hub_revision": 5}',
+        "[]",
+        "null",
+    ],
+)
+@pytest.mark.parametrize("flags", [[], ["--dry-run"]])
+def test_invalid_manifest_values_stop_before_any_write(env, capsys, content, flags):
+    _, _, dest, skills_dir, run = env
+    skills_dir.mkdir(parents=True)
+    (skills_dir / ".hub-skills.json").write_text(content, encoding="utf-8")
+
+    assert run("--skills", "alpha", *flags) == 1
+    assert "error:" in capsys.readouterr().err
+    assert sorted(p.name for p in skills_dir.iterdir()) == [".hub-skills.json"]
+    assert [p.name for p in dest.iterdir() if p.name != skills_dir.parts[len(dest.parts)]] == []
+
+
+def test_instruction_file_is_regenerated_when_an_installed_skill_left_the_hub(env):
+    import shutil
+
+    module, hub, dest, _, run = env
+    run("--skills", "alpha,beta")
+    (dest / module.INSTRUCTIONS).unlink()
+    shutil.rmtree(hub / "skills/demo/beta")
+
+    assert run("--skills", "alpha", "--force") == 0
+    text = (dest / module.INSTRUCTIONS).read_text(encoding="utf-8")
+    assert "`beta`: (not in this hub)" in text and "`alpha`:" in text
+
+
+def test_skill_behind_a_symlinked_domain_folder_is_not_installable(env, tmp_path, capsys):
+    from tests.mocks import symlink_or_skip
+
+    _, hub, _, skills_dir, run = env
+    outside = tmp_path / "outside"
+    make_skill(outside, "evil")
+    symlink_or_skip(str(outside), hub / "skills" / "linked")
+
+    assert run("--skills", "evil") == 1
+    assert "`evil` not found" in capsys.readouterr().err
+    assert not skills_dir.exists()
+
+
+@pytest.mark.parametrize("fail", ["alpha", "beta"])
+def test_failed_swap_restores_every_installed_skill(env, monkeypatch, fail):
+    module, _, _, skills_dir, run = env
+    run("--skills", "alpha,beta")
+    for name in ("alpha", "beta"):
+        (skills_dir / name / "marker.txt").write_text(f"old {name}\n", encoding="utf-8")
+    before = manifest(skills_dir)
+    real_rename = module.Path.rename
+
+    def flaky(self, target):
+        if self.name.startswith(f".{fail}-"):  # the staging folder of the skill that must fail
+            raise OSError("rename failed")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(module.Path, "rename", flaky)
+
+    with pytest.raises(OSError, match="rename failed"):
+        run("--skills", "alpha,beta", "--force")
+
+    for name in ("alpha", "beta"):
+        assert (skills_dir / name / "marker.txt").read_text(encoding="utf-8") == f"old {name}\n"
+    assert sorted(p.name for p in skills_dir.iterdir()) == [".hub-skills.json", "alpha", "beta"]
+    assert manifest(skills_dir) == before
+
+
+def test_failed_swap_on_a_fresh_install_leaves_nothing_behind(env, monkeypatch):
+    module, _, dest, skills_dir, run = env
+    real_rename = module.Path.rename
+
+    def flaky(self, target):
+        if self.name.startswith(".beta-"):
+            raise OSError("rename failed")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(module.Path, "rename", flaky)
+
+    with pytest.raises(OSError, match="rename failed"):
+        run("--skills", "alpha,beta")
+
+    assert list(skills_dir.iterdir()) == []
+    assert not (dest / module.INSTRUCTIONS).exists()

@@ -58,7 +58,8 @@ def find_undocumented(tree, include_private=False):
                 yield node.lineno, kind, name
 
             # Functions nested in functions are implementation detail.
-            if kind == "class":
+            # A private class is not public API, so its methods are not reported either, unless --all is given.
+            if kind == "class" and is_public:
                 yield from visit(node, name + ".", True)
 
     yield from visit(tree, "", False)
