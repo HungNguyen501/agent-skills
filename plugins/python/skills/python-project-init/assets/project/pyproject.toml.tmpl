@@ -26,7 +26,7 @@ dev = [
 line-length = @@line_length@@
 target-version = "@@ruff_target@@"
 # Skills installed from the hub are not project code. .venv and caches are excluded by default.
-extend-exclude = [".claude/skills"]
+extend-exclude = [".claude/skills", ".agents/skills"]
 
 [tool.ruff.lint]
 # E/F: errors and pyflakes. I: import order. UP: modern syntax. B: bugbear. SIM: simplifications.

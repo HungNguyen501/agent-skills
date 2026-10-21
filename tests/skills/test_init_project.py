@@ -1,4 +1,5 @@
 """Unit tests for the python-project-init script init_project"""
+import subprocess
 import sys
 
 import pytest
@@ -83,6 +84,16 @@ def test_apply_creates_lib_layout(tmp_path):
     assert 'packages = ["src/demo_app"]' in (dest / "pyproject.toml").read_text(encoding="utf-8")
 
 
+def test_ruff_skips_the_skills_folders_of_both_agent_layouts(tmp_path):
+    tomllib = pytest.importorskip("tomllib")
+    dest = tmp_path / "p"
+    run(dest, "--apply")
+
+    data = tomllib.loads((dest / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert set(data["tool"]["ruff"]["extend-exclude"]) == {".claude/skills", ".agents/skills"}
+
+
 def test_generated_pyproject_is_valid_toml(tmp_path):
     tomllib = pytest.importorskip("tomllib")
     dest = tmp_path / "p"
@@ -145,8 +156,6 @@ def test_write_error_is_reported_without_a_traceback(tmp_path, capsys, monkeypat
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX shell script")
 def test_ci_script_cleanup_removes_artifacts_and_keeps_source_venv_and_git(tmp_path):
-    import subprocess
-
     dest = tmp_path / "p"
     run(dest, "--apply")
     for rel in ("build", "dist", "src/build", "tests/dist", "src/__pycache__", ".venv/lib/__pycache__", ".git/hooks/__pycache__", "tests/.mypy_cache"):

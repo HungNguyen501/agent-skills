@@ -153,3 +153,60 @@ def test_directory_walk_skips_hidden_and_installed_code_folders(tmp_path, capsys
 
     assert fu.main([str(tmp_path)]) == 0
     assert "0 undocumented, 0 skipped" in capsys.readouterr().out
+
+
+def test_import_inside_a_function_does_not_exempt_decorators_elsewhere():
+    source = MODULE + (
+        'def helper():\n    """H."""\n    from typing import override\n    return override\n'
+        'class A:\n    """A."""\n    @override\n    def m(self): pass\n'
+    )
+    assert gaps(source) == [("method", "A.m")]
+
+
+@pytest.mark.parametrize(
+    "rebinding",
+    [
+        "ov = registry.make()\n",
+        'def ov(f):\n    """O."""\n    return f\n',
+        'class ov:\n    """O."""\n',
+        "for ov in range(1): pass\n",
+    ],
+    ids=["assigned", "redefined-as-function", "redefined-as-class", "loop-variable"],
+)
+def test_a_rebound_alias_no_longer_exempts_its_decorator(rebinding):
+    source = MODULE + "from typing import overload as ov\n" + rebinding
+    source += 'class A:\n    """A."""\n    @ov\n    def m(self): pass\n'
+
+    assert gaps(source) == [("method", "A.m")]
+
+
+def test_import_inside_an_if_block_at_module_level_still_counts():
+    source = MODULE + (
+        "import sys\nif sys.version_info >= (3, 12):\n    from typing import override\n"
+        'class A:\n    """A."""\n    @override\n    def m(self): pass\n'
+    )
+    assert gaps(source) == []
+
+
+@pytest.mark.parametrize(
+    "rebinding",
+    [
+        "import os as ov\n",
+        "from os import path as ov\n",
+        "try:\n    pass\nexcept Exception as ov:\n    pass\n",
+    ],
+    ids=["import-as", "from-import-as", "except-as"],
+)
+def test_an_alias_rebound_by_an_import_or_except_name_is_no_longer_exempt(rebinding):
+    source = MODULE + "from typing import overload as ov\n" + rebinding
+    source += 'class A:\n    """A."""\n    @ov\n    def m(self): pass\n'
+
+    assert gaps(source) == [("method", "A.m")]
+
+
+@pytest.mark.parametrize("comprehension", ["[ov for ov in range(2)]", "{ov for ov in range(2)}", "{ov: 1 for ov in range(2)}", "list(ov for ov in range(2))"])
+def test_a_comprehension_variable_does_not_rebind_the_alias(comprehension):
+    source = MODULE + "from typing import overload as ov\n" + f"xs = {comprehension}\n"
+    source += 'class A:\n    """A."""\n    @ov\n    def m(self): pass\n'
+
+    assert gaps(source) == []

@@ -25,15 +25,47 @@ _ACCESSOR_ATTRS = {"setter", "deleter"}
 _SKIPPED_DIRS = {"venv", "node_modules", "site-packages", "__pycache__"}
 
 
+# Nodes that open their own scope: a name bound inside one does not rebind a module-level name.
+_OWN_SCOPE = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
+
+
+def _module_scope(tree):
+    """Every node that runs in the module's own scope: nested statements count, function, class and comprehension bodies do not."""
+    stack = [tree]
+    while stack:
+        for child in ast.iter_child_nodes(stack.pop()):
+            yield child
+            if not isinstance(child, _OWN_SCOPE):
+                stack.append(child)
+
+
 def _typing_imports(tree):
-    """(module aliases, {local name: overload or override}) imported from typing or typing_extensions, aliases included."""
-    modules, names = set(), {}
-    for node in ast.walk(tree):
+    """(module aliases, {local name: overload or override}) imported from typing or typing_extensions at module level.
+
+    A function-local import does not count for decorators elsewhere. A name that is also bound some other way at module
+    level (assigned, defined, imported from elsewhere, or used as an `except ... as` name) no longer refers to the
+    import, so it is dropped.
+    """
+    modules, names, rebound = set(), {}, set()
+    for node in _module_scope(tree):
         if isinstance(node, ast.Import):
-            modules |= {alias.asname or alias.name for alias in node.names if alias.name in _TYPING_MODULES}
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module in _TYPING_MODULES:
-            names.update({alias.asname or alias.name: alias.name for alias in node.names if alias.name in _TYPING_EXEMPT})
-    return modules, names
+            for alias in node.names:
+                if alias.name in _TYPING_MODULES:
+                    modules.add(alias.asname or alias.name)
+                else:
+                    rebound.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            from_typing = node.level == 0 and node.module in _TYPING_MODULES
+            for alias in node.names:
+                if from_typing and alias.name in _TYPING_EXEMPT:
+                    names[alias.asname or alias.name] = alias.name
+                else:
+                    rebound.add(alias.asname or alias.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.ExceptHandler)) and node.name:
+            rebound.add(node.name)  # a def or class statement, or the name of `except ... as name`
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            rebound.add(node.id)
+    return modules - rebound, {k: v for k, v in names.items() if k not in rebound}
 
 
 def _takes_no_docstring(node, modules, names):

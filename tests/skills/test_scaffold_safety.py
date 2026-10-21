@@ -1,94 +1,10 @@
-"""Unit tests for the scaffolding scripts of scaffold-agent-repo-cc and scaffold-agent-repo-codex"""
-import json
+"""Unit tests for how the scaffold scripts refuse unsafe input and undo a failed install"""
+import subprocess
 
 import pytest
 
-from tests.mocks import REPO_ROOT, load_script, make_skill
-
-VARIANTS = {
-    "cc": (".claude/skills", "CLAUDE.md"),
-    "codex": (".agents/skills", "AGENTS.md"),
-}
-
-
-@pytest.fixture(name="env", params=sorted(VARIANTS))
-def gen_env(request, tmp_path, monkeypatch):
-    """(module, hub, dest, skills_dir, run) for one scaffolder variant, with a hub holding skills alpha and beta"""
-    variant = request.param
-    module = load_script(
-        REPO_ROOT / f"skills/scaffolding/scaffold-agent-repo-{variant}/scripts/scaffold.py", f"scaffold_{variant}"
-    )
-    hub = tmp_path / "hub"
-    domain = hub / "skills" / "demo"
-    make_skill(domain, "alpha", files={"references/a.md": "alpha\n"})
-    make_skill(domain, "beta")
-    dest = tmp_path / "dest"
-    dest.mkdir()
-    monkeypatch.setattr(module, "hub_revision", lambda _hub: "rev1")
-
-    def run(*extra):
-        return module.main(["--hub", str(hub), "--dest", str(dest), *extra])
-
-    return module, hub, dest, dest / VARIANTS[variant][0], run
-
-
-def manifest(skills_dir):
-    """The parsed .hub-skills.json"""
-    return json.loads((skills_dir / ".hub-skills.json").read_text(encoding="utf-8"))
-
-
-def test_installs_skill_without_evals(env):
-    _, _, _, skills_dir, run = env
-
-    assert run("--skills", "alpha") == 0
-    assert (skills_dir / "alpha/SKILL.md").exists()
-    assert (skills_dir / "alpha/references/a.md").exists()
-    assert not (skills_dir / "alpha/evals").exists()
-
-
-def test_repeated_names_install_once(env):
-    _, _, _, skills_dir, run = env
-
-    assert run("--skills", "alpha,alpha, alpha") == 0
-    assert (skills_dir / "alpha/SKILL.md").exists()
-    assert manifest(skills_dir)["skills"] == ["alpha"]
-
-
-@pytest.mark.parametrize("value", ["", ",", " , ,"])
-def test_empty_skill_list_is_an_error(env, capsys, value):
-    _, _, dest, _, run = env
-
-    assert run("--skills", value) == 1
-    assert "no skill names" in capsys.readouterr().err
-    assert list(dest.iterdir()) == []
-
-
-def test_unknown_skill_lists_available_names(env, capsys):
-    *_, run = env
-
-    assert run("--skills", "nope") == 1
-    assert "Available: alpha, beta" in capsys.readouterr().err
-
-
-def test_existing_skill_needs_force(env, capsys):
-    _, _, _, skills_dir, run = env
-    run("--skills", "alpha")
-    (skills_dir / "alpha/mine.txt").write_text("keep\n", encoding="utf-8")
-
-    assert run("--skills", "alpha") == 1
-    assert (skills_dir / "alpha/mine.txt").exists()
-    assert "--force" in capsys.readouterr().err
-
-    assert run("--skills", "alpha", "--force") == 0
-    assert not (skills_dir / "alpha/mine.txt").exists()
-
-
-def test_dry_run_writes_nothing(env, capsys):
-    _, _, dest, _, run = env
-
-    assert run("--skills", "alpha", "--dry-run") == 0
-    assert list(dest.iterdir()) == []
-    assert "dry run: nothing written" in capsys.readouterr().out
+from tests.mocks import make_skill, symlink_or_skip
+from tests.skills.helpers import VARIANTS, fail_manifest_write, load_variant, manifest
 
 
 def test_failed_copy_keeps_installed_skill_and_leaves_no_staging(env, monkeypatch):
@@ -137,65 +53,6 @@ def test_manifest_with_a_string_for_skills_is_rejected(env, capsys):
     assert "`skills` must be a list" in capsys.readouterr().err
 
 
-def test_manifest_records_a_revision_per_skill(env):
-    module, _, _, skills_dir, run = env
-    run("--skills", "alpha")
-    module.hub_revision = lambda _hub: "rev2"
-    run("--skills", "beta")
-
-    data = manifest(skills_dir)
-
-    assert data["skills"] == ["alpha", "beta"]
-    assert data["revisions"] == {"alpha": "rev1", "beta": "rev2"}
-    assert data["hub_revision"] == "rev2"
-
-
-def test_reinstalling_one_skill_leaves_the_other_revision_alone(env):
-    module, _, _, skills_dir, run = env
-    run("--skills", "alpha,beta")
-    module.hub_revision = lambda _hub: "rev3"
-    run("--skills", "alpha", "--force")
-
-    assert manifest(skills_dir)["revisions"] == {"alpha": "rev3", "beta": "rev1"}
-
-
-def test_legacy_manifest_entries_keep_the_old_shared_revision(env):
-    _, _, _, skills_dir, run = env
-    run("--skills", "alpha")
-    legacy = {"skills": ["alpha"], "hub_revision": "old-sha"}
-    (skills_dir / ".hub-skills.json").write_text(json.dumps(legacy), encoding="utf-8")
-
-    run("--skills", "beta")
-
-    assert manifest(skills_dir)["revisions"] == {"alpha": "old-sha", "beta": "rev1"}
-
-
-def test_deleted_skill_folder_is_dropped_from_the_manifest(env):
-    import shutil
-
-    _, _, _, skills_dir, run = env
-    run("--skills", "alpha,beta")
-    shutil.rmtree(skills_dir / "alpha")
-
-    run("--skills", "beta", "--force")
-
-    data = manifest(skills_dir)
-    assert data["skills"] == ["beta"]
-    assert list(data["revisions"]) == ["beta"]
-
-
-def test_instruction_file_is_written_once_and_never_overwritten(env):
-    module, _, dest, _, run = env
-    run("--skills", "alpha")
-    path = dest / module.INSTRUCTIONS
-    assert "`alpha`" in path.read_text(encoding="utf-8")
-
-    path.write_text("mine\n", encoding="utf-8")
-    run("--skills", "beta")
-
-    assert path.read_text(encoding="utf-8") == "mine\n"
-
-
 @pytest.mark.parametrize(
     "content",
     [
@@ -203,6 +60,7 @@ def test_instruction_file_is_written_once_and_never_overwritten(env):
         '{"skills": [1]}',
         '{"skills": ["../escape"]}',
         '{"skills": ["a/b"]}',
+        '{"skills": ["alpha\\n"]}',
         '{"skills": [".hidden"]}',
         '{"skills": [], "revisions": []}',
         '{"skills": [], "revisions": {"a": 1}}',
@@ -223,22 +81,7 @@ def test_invalid_manifest_values_stop_before_any_write(env, capsys, content, fla
     assert [p.name for p in dest.iterdir() if p.name != skills_dir.parts[len(dest.parts)]] == []
 
 
-def test_instruction_file_is_regenerated_when_an_installed_skill_left_the_hub(env):
-    import shutil
-
-    module, hub, dest, _, run = env
-    run("--skills", "alpha,beta")
-    (dest / module.INSTRUCTIONS).unlink()
-    shutil.rmtree(hub / "skills/demo/beta")
-
-    assert run("--skills", "alpha", "--force") == 0
-    text = (dest / module.INSTRUCTIONS).read_text(encoding="utf-8")
-    assert "`beta`: (not in this hub)" in text and "`alpha`:" in text
-
-
 def test_skill_behind_a_symlinked_domain_folder_is_not_installable(env, tmp_path, capsys):
-    from tests.mocks import symlink_or_skip
-
     _, hub, _, skills_dir, run = env
     outside = tmp_path / "outside"
     make_skill(outside, "evil")
@@ -292,14 +135,6 @@ def test_failed_swap_on_a_fresh_install_leaves_nothing_behind(env, monkeypatch):
     assert not (dest / module.INSTRUCTIONS).exists()
 
 
-def _fail_manifest_write(module, monkeypatch):
-    """Make the final, atomic manifest write fail the way a full disk would"""
-    def boom(*_args, **_kwargs):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(module.os, "replace", boom)
-
-
 def test_metadata_failure_after_the_swap_restores_the_old_skills(env, monkeypatch):
     module, _, dest, skills_dir, run = env
     run("--skills", "alpha,beta")
@@ -307,7 +142,7 @@ def test_metadata_failure_after_the_swap_restores_the_old_skills(env, monkeypatc
     for name in ("alpha", "beta"):
         (skills_dir / name / "marker.txt").write_text(f"old {name}\n", encoding="utf-8")
     before = manifest(skills_dir)
-    _fail_manifest_write(module, monkeypatch)
+    fail_manifest_write(module, monkeypatch)
 
     with pytest.raises(OSError, match="disk full"):
         run("--skills", "alpha,beta", "--force")
@@ -321,21 +156,13 @@ def test_metadata_failure_after_the_swap_restores_the_old_skills(env, monkeypatc
 
 def test_metadata_failure_on_a_fresh_install_leaves_nothing_behind(env, monkeypatch):
     module, _, dest, skills_dir, run = env
-    _fail_manifest_write(module, monkeypatch)
+    fail_manifest_write(module, monkeypatch)
 
     with pytest.raises(OSError, match="disk full"):
         run("--skills", "alpha")
 
     assert list(skills_dir.iterdir()) == []
     assert not (dest / module.INSTRUCTIONS).exists()
-
-
-def test_old_copies_are_removed_after_a_successful_install(env):
-    _, _, _, skills_dir, run = env
-    run("--skills", "alpha")
-    run("--skills", "alpha", "--force")
-
-    assert sorted(p.name for p in skills_dir.iterdir()) == [".hub-skills.json", "alpha"]
 
 
 def test_force_refuses_a_file_where_a_skill_folder_belongs(env, capsys):
@@ -349,8 +176,6 @@ def test_force_refuses_a_file_where_a_skill_folder_belongs(env, capsys):
 
 
 def test_force_refuses_a_symlink_where_a_skill_folder_belongs(env, tmp_path, capsys):
-    from tests.mocks import symlink_or_skip
-
     _, _, _, skills_dir, run = env
     skills_dir.mkdir(parents=True)
     elsewhere = tmp_path / "elsewhere"
@@ -371,7 +196,7 @@ def test_a_users_tmp_file_next_to_the_manifest_is_never_touched(env, monkeypatch
     assert run("--skills", "alpha") == 0
     assert mine.read_text(encoding="utf-8") == "user data\n"
 
-    _fail_manifest_write(module, monkeypatch)
+    fail_manifest_write(module, monkeypatch)
     with pytest.raises(OSError, match="disk full"):
         run("--skills", "beta")
 
@@ -401,7 +226,7 @@ def test_extra_files_are_restored_when_the_manifest_write_fails(env, monkeypatch
         pytest.skip("this layout writes no extra files")
     gitignore = dest / ".gitignore"
     gitignore.write_text("build/\n", encoding="utf-8")
-    _fail_manifest_write(module, monkeypatch)
+    fail_manifest_write(module, monkeypatch)
 
     with pytest.raises(OSError, match="disk full"):
         run("--skills", "alpha")
@@ -414,7 +239,7 @@ def test_extra_files_are_removed_on_failure_when_the_run_created_them(env, monke
     module, _, dest, _, run = env
     if not module.EXTRA_FILES:
         pytest.skip("this layout writes no extra files")
-    _fail_manifest_write(module, monkeypatch)
+    fail_manifest_write(module, monkeypatch)
 
     with pytest.raises(OSError, match="disk full"):
         run("--skills", "alpha")
@@ -425,8 +250,6 @@ def test_extra_files_are_removed_on_failure_when_the_run_created_them(env, monke
 
 @pytest.mark.parametrize("depth", [0, 1])
 def test_symlinked_install_ancestors_are_refused(env, tmp_path, capsys, depth):
-    from tests.mocks import symlink_or_skip
-
     module, _, dest, _, run = env
     parts = module.SKILLS_DIR.split("/")
     outside = tmp_path / "outside"
@@ -443,8 +266,6 @@ def test_symlinked_install_ancestors_are_refused(env, tmp_path, capsys, depth):
 
 
 def test_a_dangling_instruction_link_is_kept_and_not_written_through(env, tmp_path):
-    from tests.mocks import symlink_or_skip
-
     module, _, dest, _, run = env
     missing = tmp_path / "elsewhere" / "target.md"
     symlink_or_skip(str(missing), dest / module.INSTRUCTIONS)
@@ -455,8 +276,6 @@ def test_a_dangling_instruction_link_is_kept_and_not_written_through(env, tmp_pa
 
 
 def test_a_symlinked_extra_file_is_refused_and_its_target_is_unchanged(env, tmp_path, capsys):
-    from tests.mocks import symlink_or_skip
-
     module, _, dest, skills_dir, run = env
     if not module.EXTRA_FILES:
         pytest.skip("this layout writes no extra files")
@@ -471,8 +290,6 @@ def test_a_symlinked_extra_file_is_refused_and_its_target_is_unchanged(env, tmp_
 
 
 def test_a_dangling_extra_file_link_is_refused_and_its_target_is_not_created(env, tmp_path, capsys):
-    from tests.mocks import symlink_or_skip
-
     module, _, dest, _, run = env
     if not module.EXTRA_FILES:
         pytest.skip("this layout writes no extra files")
@@ -485,12 +302,10 @@ def test_a_dangling_extra_file_link_is_refused_and_its_target_is_not_created(env
 
 
 def test_a_dangling_instruction_link_survives_a_failed_install(env, tmp_path, monkeypatch):
-    from tests.mocks import symlink_or_skip
-
     module, _, dest, _, run = env
     missing = tmp_path / "elsewhere" / "target.md"
     symlink_or_skip(str(missing), dest / module.INSTRUCTIONS)
-    _fail_manifest_write(module, monkeypatch)
+    fail_manifest_write(module, monkeypatch)
 
     with pytest.raises(OSError, match="disk full"):
         run("--skills", "alpha")
@@ -504,10 +319,177 @@ def test_an_instruction_folder_is_kept_and_does_not_mask_the_original_failure(en
     (dest / module.INSTRUCTIONS).mkdir()
     gitignore = dest / ".gitignore"
     gitignore.write_text("build/\n", encoding="utf-8")
-    _fail_manifest_write(module, monkeypatch)
+    fail_manifest_write(module, monkeypatch)
 
     with pytest.raises(OSError, match="disk full"):
         run("--skills", "alpha")
 
     assert (dest / module.INSTRUCTIONS).is_dir()
     assert gitignore.read_text(encoding="utf-8") == "build/\n"
+
+
+def test_rollback_never_rewrites_an_existing_instruction_file(env, monkeypatch):
+    module, _, dest, _, run = env
+    path = dest / module.INSTRUCTIONS
+    path.write_text("mine\n", encoding="utf-8")
+    written = []
+    real = module.write_atomic
+
+    def spy(target, content):
+        written.append(target.name)
+        return real(target, content)
+
+    monkeypatch.setattr(module, "write_atomic", spy)
+    fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert module.INSTRUCTIONS not in written
+    assert path.read_text(encoding="utf-8") == "mine\n"
+
+
+def test_a_failing_restore_is_reported_and_does_not_hide_the_original_error(env, monkeypatch, capsys):
+    module, _, dest, _, run = env
+    if not module.EXTRA_FILES:
+        pytest.skip("this layout writes no extra files")
+    (dest / ".gitignore").write_text("build/\n", encoding="utf-8")
+    real = module.write_atomic
+
+    def broken(target, content):
+        if target.name == ".gitignore" and content == b"build/\n":
+            raise OSError("read-only")
+        return real(target, content)
+
+    monkeypatch.setattr(module, "write_atomic", broken)
+    fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert "could not restore" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("flags", [[], ["--dry-run"]])
+@pytest.mark.parametrize("dangling", [False, True])
+def test_a_manifest_symlink_is_refused_and_left_untouched(env, tmp_path, capsys, flags, dangling):
+    _, _, _, skills_dir, run = env
+    skills_dir.mkdir(parents=True)
+    target = tmp_path / "shared-manifest.json"
+    if not dangling:
+        target.write_text('{"skills": []}', encoding="utf-8")
+    symlink_or_skip(str(target), skills_dir / ".hub-skills.json")
+
+    assert run("--skills", "alpha", *flags) == 1
+    assert "refusing to replace it" in capsys.readouterr().err
+    assert (skills_dir / ".hub-skills.json").is_symlink()
+    assert target.exists() is (not dangling)
+    assert not (skills_dir / "alpha").exists()
+
+
+@pytest.mark.parametrize("flags", [[], ["--dry-run"]])
+@pytest.mark.parametrize("depth", [0, 1])
+def test_a_file_where_an_install_folder_belongs_is_refused_even_on_a_dry_run(env, capsys, flags, depth):
+    module, _, dest, _, run = env
+    parts = module.SKILLS_DIR.split("/")
+    parent = dest
+    for part in parts[:depth]:
+        parent = parent / part
+        parent.mkdir()
+    (parent / parts[depth]).write_text("a file\n", encoding="utf-8")
+
+    assert run("--skills", "alpha", *flags) == 1
+    assert "exists and is not a directory" in capsys.readouterr().err
+
+
+def test_a_folder_at_the_manifest_path_is_a_clean_error_not_a_traceback(env, capsys):
+    _, _, _, skills_dir, run = env
+    (skills_dir / ".hub-skills.json").mkdir(parents=True)
+
+    assert run("--skills", "alpha") == 1
+    assert "cannot be read" in capsys.readouterr().err
+    assert not (skills_dir / "alpha").exists()
+
+
+def _folders(tmp_path):
+    """A freshly installed target and the backup of the skill it replaced"""
+    target, backup = tmp_path / "target", tmp_path / "backup"
+    for folder, content in ((target, "new"), (backup, "old")):
+        folder.mkdir()
+        (folder / "f.txt").write_text(content, encoding="utf-8")
+    return target, backup
+
+
+def test_roll_back_puts_the_old_skill_back(env, tmp_path):
+    module, *_ = env
+    target, backup = _folders(tmp_path)
+
+    module.roll_back([(target, backup)])
+
+    assert (target / "f.txt").read_text(encoding="utf-8") == "old"
+    assert not backup.exists()
+
+
+def test_roll_back_keeps_the_backup_and_does_not_raise_when_removal_fails(env, tmp_path, monkeypatch, capsys):
+    module, *_ = env
+    target, backup = _folders(tmp_path)
+
+    def busy(_path, *_args, **_kwargs):
+        raise OSError("busy")
+
+    monkeypatch.setattr(module.shutil, "rmtree", busy)
+
+    module.roll_back([(target, backup)])
+
+    err = capsys.readouterr().err
+    assert "could not remove" in err and f"stays at {backup}" in err
+    assert (backup / "f.txt").read_text(encoding="utf-8") == "old"
+
+
+def test_roll_back_reports_a_failed_rename_and_continues_with_the_rest(env, tmp_path, monkeypatch, capsys):
+    module, *_ = env
+    first, first_backup = _folders(tmp_path)
+    second, second_backup = tmp_path / "t2", tmp_path / "b2"
+    for folder in (second, second_backup):
+        folder.mkdir()
+    real_rename = module.Path.rename
+
+    def flaky(self, destination):
+        if self == second_backup:
+            raise OSError("rename failed")
+        return real_rename(self, destination)
+
+    monkeypatch.setattr(module.Path, "rename", flaky)
+
+    module.roll_back([(first, first_backup), (second, second_backup)])
+
+    assert "could not restore" in capsys.readouterr().err
+    assert (first / "f.txt").read_text(encoding="utf-8") == "old"
+    assert second_backup.exists()
+
+
+@pytest.mark.parametrize("variant", sorted(VARIANTS))
+def test_hub_revision_gives_up_on_a_hung_git(variant, tmp_path, monkeypatch):
+    module = load_variant(variant)
+    seen = {}
+
+    def hung(*_args, **kwargs):
+        seen.update(kwargs)
+        raise subprocess.TimeoutExpired("git", kwargs["timeout"])
+
+    monkeypatch.setattr(module.subprocess, "run", hung)
+
+    assert module.hub_revision(tmp_path) == "unknown"
+    assert seen["timeout"] == module.GIT_TIMEOUT_SECONDS
+
+
+@pytest.mark.parametrize("variant", sorted(VARIANTS))
+def test_hub_revision_is_unknown_when_git_is_missing(variant, tmp_path, monkeypatch):
+    module = load_variant(variant)
+
+    def missing(*_args, **_kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(module.subprocess, "run", missing)
+
+    assert module.hub_revision(tmp_path) == "unknown"
