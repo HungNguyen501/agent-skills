@@ -21,6 +21,8 @@ from pathlib import Path
 
 # One folder name: no separators and no leading dot, so a manifest entry can never point outside the skills folder.
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+# Files besides the instruction file and the manifest that an install may write, snapshotted so a failure can undo them.
+EXTRA_FILES = ()
 SKILLS_DIR = ".agents/skills"
 INSTRUCTIONS = "AGENTS.md"
 # Names left out of copies: evals are test fixtures, not agent-facing content.
@@ -126,6 +128,40 @@ def load_manifest(path):
     return manifest
 
 
+def present(path):
+    """True when `path` exists or is a link, dangling ones included, so a link is never written through."""
+    return path.exists() or path.is_symlink()
+
+
+def layout_errors(dest):
+    """Errors for every part of the install path that is a symlink: writing through one would leave the destination."""
+    errors, path = [], dest
+    for part in Path(SKILLS_DIR).parts:
+        path = path / part
+        if path.is_symlink():
+            errors.append(f"{path} is a symlink; refusing to install through it")
+    return errors
+
+
+def metadata_paths(dest):
+    """Every file besides the skill folders that an install writes."""
+    return [dest / INSTRUCTIONS, dest / SKILLS_DIR / ".hub-skills.json", *(dest / extra for extra in EXTRA_FILES)]
+
+
+def snapshot(paths):
+    """Remembers each file's bytes, or None when it is absent, so a failed run can put them back."""
+    return {path: path.read_bytes() if path.is_file() else None for path in paths}
+
+
+def restore(saved):
+    """Puts back what `snapshot` saw: rewrites changed files and removes the ones the run created."""
+    for path, content in saved.items():
+        if content is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_bytes(content)
+
+
 def swap_in(actions, skills_dir):
     """Copies each skill into a private staging folder, then swaps it in, keeping the old one as a backup.
 
@@ -179,10 +215,18 @@ def commit(done):
 
 
 def write_json_atomic(path, data):
-    """Writes `data` as JSON so a failed write never leaves a half-written file at `path`."""
-    tmp = path.with_name(path.name + ".tmp")
+    """Writes `data` as JSON so a failed write never leaves a half-written file at `path`.
+
+    The temporary file is created exclusively by mkstemp, so a file or link a user already has next to `path` is never
+    truncated, followed or deleted.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}-", suffix=".tmp")
+    tmp = Path(tmp_name)
     try:
-        tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, indent=2) + "\n")
+        # mkstemp creates the file 0600. Keep the manifest's mode, or use the usual 0644 for a new one.
+        os.chmod(tmp, path.stat().st_mode & 0o777 if path.exists() else 0o644)
         os.replace(tmp, path)
     except Exception:
         tmp.unlink(missing_ok=True)
@@ -205,18 +249,16 @@ def apply_install(args, actions, manifest):
     """Installs the skills and writes the metadata, undoing every change if any step fails."""
     skills_dir = args.dest / SKILLS_DIR
     instructions = args.dest / INSTRUCTIONS
+    saved = snapshot(metadata_paths(args.dest))
     done = swap_in(actions, skills_dir)
-    created = []
     try:
         update_manifest(manifest, skills_dir, {n for n, _, _ in actions}, hub_revision(args.hub))
-        if not instructions.exists():
+        if not present(instructions):
             write_instructions(args, manifest, instructions)
-            created.append(instructions)
         write_json_atomic(skills_dir / ".hub-skills.json", manifest)  # last, so it never describes an install that failed
     except Exception:
         roll_back(done)
-        for path in created:
-            path.unlink(missing_ok=True)
+        restore(saved)
         raise
     commit(done)
 
@@ -234,7 +276,9 @@ def main(argv=None):
     if not args.dest.is_dir():
         print(f"error: destination {args.dest} is not a directory", file=sys.stderr)
         return 1
-    errors, actions = plan(args.hub, args.dest, names, args.force)
+    errors = layout_errors(args.dest)  # before anything else reads or writes under the destination
+    plan_errors, actions = plan(args.hub, args.dest, names, args.force)
+    errors += plan_errors
     manifest_path = args.dest / SKILLS_DIR / ".hub-skills.json"
     try:
         manifest = load_manifest(manifest_path)  # read before any write, so a bad manifest cannot leave a half-applied install
@@ -247,7 +291,7 @@ def main(argv=None):
     instructions = args.dest / INSTRUCTIONS
     for name, src, target in actions:
         print(f"copy {src} -> {target}")
-    print(f"{'keep existing' if instructions.exists() else 'write'} {instructions}")
+    print(f"{'keep existing' if present(instructions) else 'write'} {instructions}")
     if args.dry_run:
         print("dry run: nothing written")
         return 0

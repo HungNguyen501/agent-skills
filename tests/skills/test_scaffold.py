@@ -360,3 +360,95 @@ def test_force_refuses_a_symlink_where_a_skill_folder_belongs(env, tmp_path, cap
     assert run("--skills", "alpha", "--force") == 1
     assert "not a plain folder" in capsys.readouterr().err
     assert elsewhere.exists()
+
+
+def test_a_users_tmp_file_next_to_the_manifest_is_never_touched(env, monkeypatch):
+    module, _, _, skills_dir, run = env
+    skills_dir.mkdir(parents=True)
+    mine = skills_dir / ".hub-skills.json.tmp"
+    mine.write_text("user data\n", encoding="utf-8")
+
+    assert run("--skills", "alpha") == 0
+    assert mine.read_text(encoding="utf-8") == "user data\n"
+
+    _fail_manifest_write(module, monkeypatch)
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "beta")
+
+    assert mine.read_text(encoding="utf-8") == "user data\n"
+    assert sorted(p.name for p in skills_dir.iterdir() if p.name.endswith(".tmp")) == [".hub-skills.json.tmp"]
+
+
+def test_partial_instruction_write_is_removed_on_failure(env, monkeypatch):
+    module, _, dest, skills_dir, run = env
+
+    def half_write(_args, _manifest, instructions):
+        instructions.write_text("partial", encoding="utf-8")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module, "write_instructions", half_write)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert not (dest / module.INSTRUCTIONS).exists()
+    assert list(skills_dir.iterdir()) == []
+
+
+def test_extra_files_are_restored_when_the_manifest_write_fails(env, monkeypatch):
+    module, _, dest, _, run = env
+    if not module.EXTRA_FILES:
+        pytest.skip("this layout writes no extra files")
+    gitignore = dest / ".gitignore"
+    gitignore.write_text("build/\n", encoding="utf-8")
+    _fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert gitignore.read_text(encoding="utf-8") == "build/\n"
+    assert not (dest / ".claude/settings.example.json").exists()
+
+
+def test_extra_files_are_removed_on_failure_when_the_run_created_them(env, monkeypatch):
+    module, _, dest, _, run = env
+    if not module.EXTRA_FILES:
+        pytest.skip("this layout writes no extra files")
+    _fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert not (dest / ".gitignore").exists()
+    assert not (dest / ".claude/settings.example.json").exists()
+
+
+@pytest.mark.parametrize("depth", [0, 1])
+def test_symlinked_install_ancestors_are_refused(env, tmp_path, capsys, depth):
+    from tests.mocks import symlink_or_skip
+
+    module, _, dest, _, run = env
+    parts = module.SKILLS_DIR.split("/")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    parent = dest
+    for part in parts[:depth]:
+        parent = parent / part
+        parent.mkdir()
+    symlink_or_skip(str(outside), parent / parts[depth])
+
+    assert run("--skills", "alpha") == 1
+    assert "is a symlink; refusing to install through it" in capsys.readouterr().err
+    assert list(outside.iterdir()) == []
+
+
+def test_a_dangling_instruction_link_is_kept_and_not_written_through(env, tmp_path):
+    from tests.mocks import symlink_or_skip
+
+    module, _, dest, _, run = env
+    missing = tmp_path / "elsewhere" / "target.md"
+    symlink_or_skip(str(missing), dest / module.INSTRUCTIONS)
+
+    assert run("--skills", "alpha") == 0
+    assert (dest / module.INSTRUCTIONS).is_symlink()
+    assert not missing.exists() and not missing.parent.exists()
