@@ -149,12 +149,13 @@ def present(path):
 
 
 def layout_errors(dest):
-    """Errors for every part of the install path that is a symlink: writing through one would leave the destination."""
+    """Errors for every install path that is a symlink: writing through one would change files outside the destination."""
     errors, path = [], dest
     for part in Path(SKILLS_DIR).parts:
         path = path / part
         if path.is_symlink():
             errors.append(f"{path} is a symlink; refusing to install through it")
+    errors += [f"{dest / extra} is a symlink; refusing to write through it" for extra in EXTRA_FILES if (dest / extra).is_symlink()]
     return errors
 
 
@@ -164,8 +165,16 @@ def metadata_paths(dest):
 
 
 def snapshot(paths):
-    """Remembers each file's bytes, or None when it is absent, so a failed run can put them back."""
-    return {path: path.read_bytes() if path.is_file() else None for path in paths}
+    """Remembers each plain file's bytes, or None when the path is absent, so a failed run can put them back.
+
+    Links and folders are left out: this script never writes through a link and keeps an existing instruction entry
+    as it is, so rollback must not touch them either.
+    """
+    saved = {}
+    for path in paths:
+        if not path.is_symlink() and not path.is_dir():
+            saved[path] = path.read_bytes() if path.is_file() else None
+    return saved
 
 
 def restore(saved):

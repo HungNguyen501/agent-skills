@@ -15,7 +15,7 @@ Source: Google Python Style Guide, sections 3.8 (comments and docstrings) and 3.
    - NumPy: read [references/numpy.md](references/numpy.md) before writing.
    - Sphinx (`:param:` fields): read [references/sphinx.md](references/sphinx.md) before writing.
    - Google: the rules below.
-2. **Find the gaps** when asked to document a file or package: run `scripts/find_undocumented.py PATH...`. It prints one line per public module, class, function or method without a docstring and a summary line. Add `--all` to include private names. It skips `@overload` stubs, property setters and deleters, and `@override` methods, which take no docstring of their own. Use `--all` to see everything.
+2. **Find the gaps** when asked to document a file or package: run `scripts/find_undocumented.py PATH...`. It prints one line per public module, class, function or method without a docstring and a summary line. Add `--all` to include private names. It skips `@overload` stubs and `@override` methods imported from `typing` or `typing_extensions` (aliases included) and property setters and deleters, which take no docstring of their own. Use `--all` to see everything.
 3. **Write docstrings** for the listed definitions. Rewrite existing docstrings only when asked.
 4. **Re-run the script** after editing and repeat step 3 until it reports `0 undocumented`. Report the final summary line and anything it skipped.
 5. Change only docstrings. Leave code, signatures and comments as they are, then show the updated code, not a description of the changes.

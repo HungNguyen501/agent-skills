@@ -16,19 +16,42 @@ _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 # Statement containers that can hold definitions: ast.ExceptHandler and ast.match_case are not ast.stmt subclasses.
 # match_case exists from Python 3.10 on.
 _CONTAINERS = (ast.stmt, ast.ExceptHandler) + ((ast.match_case,) if hasattr(ast, "match_case") else ())
-# Decorators of definitions that take no docstring: overload stubs, property setters and deleters, and @override methods.
-_NO_DOCSTRING_DECORATORS = {"overload", "setter", "deleter", "override"}
+# Definitions that take no docstring of their own: typing.overload stubs and typing.override methods (both modules
+# export them), and a property setter or deleter, written @x.setter above def x.
+_TYPING_MODULES = {"typing", "typing_extensions"}
+_TYPING_EXEMPT = {"overload", "override"}
+_ACCESSOR_ATTRS = {"setter", "deleter"}
 # Folders that hold installed or generated code, not the project's own. Hidden folders are skipped as well.
 _SKIPPED_DIRS = {"venv", "node_modules", "site-packages", "__pycache__"}
 
 
-def _takes_no_docstring(node):
-    """True for an @overload stub, a property setter or deleter, or an @override method, which need no docstring of their own."""
+def _typing_imports(tree):
+    """(module aliases, {local name: overload or override}) imported from typing or typing_extensions, aliases included."""
+    modules, names = set(), {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules |= {alias.asname or alias.name for alias in node.names if alias.name in _TYPING_MODULES}
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module in _TYPING_MODULES:
+            names.update({alias.asname or alias.name: alias.name for alias in node.names if alias.name in _TYPING_EXEMPT})
+    return modules, names
+
+
+def _takes_no_docstring(node, modules, names):
+    """True for an @overload stub, an @override method, or a property setter or deleter, which need no docstring of their own.
+
+    Decorators are matched by what they resolve to, not by spelling: `@ov` after `from typing import overload as ov`
+    counts, an unrelated `@registry.override` does not.
+    """
     if isinstance(node, ast.ClassDef):
         return False
     for decorator in node.decorator_list:
-        name = decorator.attr if isinstance(decorator, ast.Attribute) else getattr(decorator, "id", None)
-        if name in _NO_DOCSTRING_DECORATORS:
+        if isinstance(decorator, ast.Name) and decorator.id in names:
+            return True
+        if not (isinstance(decorator, ast.Attribute) and isinstance(decorator.value, ast.Name)):
+            continue
+        if decorator.value.id in modules and decorator.attr in _TYPING_EXEMPT:
+            return True
+        if decorator.attr in _ACCESSOR_ATTRS and decorator.value.id == node.name:
             return True
     return False
 
@@ -42,6 +65,7 @@ def find_undocumented(tree, include_private=False):
     """
     if ast.get_docstring(tree) is None:
         yield 1, "module", "<module>"
+    modules, names = _typing_imports(tree)
 
     def visit(parent, prefix, in_class):
         for node in ast.iter_child_nodes(parent):
@@ -58,7 +82,7 @@ def find_undocumented(tree, include_private=False):
                 kind = "method" if in_class else "function"
 
             is_public = include_private or not node.name.startswith("_")
-            if is_public and ast.get_docstring(node) is None and not _takes_no_docstring(node):
+            if is_public and ast.get_docstring(node) is None and not _takes_no_docstring(node, modules, names):
                 yield node.lineno, kind, name
 
             # Functions nested in functions are implementation detail.

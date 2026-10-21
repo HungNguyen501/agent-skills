@@ -84,19 +84,27 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
-def build_tokens(args: argparse.Namespace) -> dict[str, str]:
-    """Returns the values substituted for @@token@@ in the templates."""
-    lib = args.layout == "lib"
-    src_dir = f"src/{args.package}" if lib else "src"
-    tree = [
-        f"{args.name}/",
-        f"├── {src_dir}/" + ("   source code, imported as `" + args.package + "`" if lib else "   source code, imported as `src.<module>`"),
+def build_structure(name: str, src_dir: str, package: str, lib: bool) -> str:
+    """The fenced project tree shown in README.md and AGENTS.md."""
+    lines = [
+        f"{name}/",
+        f"├── {src_dir}/" + (f"   source code, imported as `{package}`" if lib else "   source code, imported as `src.<module>`"),
         "├── tests/       mirrors the source tree",
         "├── scripts/     ci.sh",
         "├── configs/     pre-commit and yamllint config",
         "├── .github/     CI workflow, PR and commit templates",
+        "├── AGENTS.md",
+        "├── Makefile",
+        "└── pyproject.toml",
     ]
-    tree += ["├── AGENTS.md", "├── Makefile", "└── pyproject.toml"]
+    return "```text\n" + "\n".join(lines) + "\n```"
+
+
+def build_tokens(args: argparse.Namespace) -> dict[str, str]:
+    """Returns the values substituted for @@token@@ in the templates."""
+    lib = args.layout == "lib"
+    src_dir = f"src/{args.package}" if lib else "src"
+    tree = build_structure(args.name, src_dir, args.package, lib)
     return {
         "name": args.name,
         "package": args.package,
@@ -111,7 +119,7 @@ def build_tokens(args: argparse.Namespace) -> dict[str, str]:
         "build_system": LIB_BUILD_SYSTEM.format(package=args.package) if lib else "",
         "example_path": f"{src_dir}/example.py",
         "src_hint": src_dir,
-        "structure": "```text\n" + "\n".join(tree) + "\n```",
+        "structure": tree,
     }
 
 

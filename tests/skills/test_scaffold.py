@@ -452,3 +452,62 @@ def test_a_dangling_instruction_link_is_kept_and_not_written_through(env, tmp_pa
     assert run("--skills", "alpha") == 0
     assert (dest / module.INSTRUCTIONS).is_symlink()
     assert not missing.exists() and not missing.parent.exists()
+
+
+def test_a_symlinked_extra_file_is_refused_and_its_target_is_unchanged(env, tmp_path, capsys):
+    from tests.mocks import symlink_or_skip
+
+    module, _, dest, skills_dir, run = env
+    if not module.EXTRA_FILES:
+        pytest.skip("this layout writes no extra files")
+    external = tmp_path / "shared-gitignore"
+    external.write_text("*.log\n", encoding="utf-8")
+    symlink_or_skip(str(external), dest / ".gitignore")
+
+    assert run("--skills", "alpha") == 1
+    assert "refusing to write through it" in capsys.readouterr().err
+    assert external.read_text(encoding="utf-8") == "*.log\n"
+    assert not skills_dir.exists()
+
+
+def test_a_dangling_extra_file_link_is_refused_and_its_target_is_not_created(env, tmp_path, capsys):
+    from tests.mocks import symlink_or_skip
+
+    module, _, dest, _, run = env
+    if not module.EXTRA_FILES:
+        pytest.skip("this layout writes no extra files")
+    missing = tmp_path / "nowhere" / ".gitignore"
+    symlink_or_skip(str(missing), dest / ".gitignore")
+
+    assert run("--skills", "alpha") == 1
+    assert "refusing to write through it" in capsys.readouterr().err
+    assert not missing.parent.exists()
+
+
+def test_a_dangling_instruction_link_survives_a_failed_install(env, tmp_path, monkeypatch):
+    from tests.mocks import symlink_or_skip
+
+    module, _, dest, _, run = env
+    missing = tmp_path / "elsewhere" / "target.md"
+    symlink_or_skip(str(missing), dest / module.INSTRUCTIONS)
+    _fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert (dest / module.INSTRUCTIONS).is_symlink()
+    assert not missing.parent.exists()
+
+
+def test_an_instruction_folder_is_kept_and_does_not_mask_the_original_failure(env, monkeypatch):
+    module, _, dest, _, run = env
+    (dest / module.INSTRUCTIONS).mkdir()
+    gitignore = dest / ".gitignore"
+    gitignore.write_text("build/\n", encoding="utf-8")
+    _fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert (dest / module.INSTRUCTIONS).is_dir()
+    assert gitignore.read_text(encoding="utf-8") == "build/\n"

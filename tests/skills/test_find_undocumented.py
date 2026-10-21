@@ -49,18 +49,50 @@ def test_finds_definitions_inside_match_case():
     assert gaps(source) == [("function", "f")]
 
 
-@pytest.mark.parametrize(
-    "decorator",
-    ["@overload", "@typing.overload", "@x.setter", "@x.deleter", "@override", "@typing.override"],
+IMPORTS = (
+    "import typing\nimport typing as t\nimport typing_extensions as te\n"
+    "from typing import overload, override\nfrom typing import overload as ov\n"
+    "from typing_extensions import override as te_override\n"
 )
-def test_skips_definitions_that_take_no_docstring(decorator):
-    source = MODULE + f'class A:\n    """A."""\n    {decorator}\n    def m(self): pass\n'
+
+
+@pytest.mark.parametrize(
+    "decorator, func",
+    [
+        ("@overload", "m"),
+        ("@override", "m"),
+        ("@typing.overload", "m"),
+        ("@typing.override", "m"),
+        ("@t.overload", "m"),
+        ("@te.override", "m"),
+        ("@ov", "m"),
+        ("@te_override", "m"),
+        ("@x.setter", "x"),
+        ("@x.deleter", "x"),
+    ],
+)
+def test_skips_definitions_that_take_no_docstring(decorator, func):
+    source = MODULE + IMPORTS + f'class A:\n    """A."""\n    {decorator}\n    def {func}(self): pass\n'
     assert gaps(source) == []
 
 
-def test_other_decorators_are_still_reported():
-    source = MODULE + 'class A:\n    """A."""\n    @staticmethod\n    def m(): pass\n    @registry.register("x")\n    def n(self): pass\n'
-    assert gaps(source) == [("method", "A.m"), ("method", "A.n")]
+@pytest.mark.parametrize(
+    "decorator, func",
+    [
+        ("@registry.override", "m"),
+        ("@registry.overload", "m"),
+        ("@other.setter", "x"),
+        ("@x.setter", "y"),
+        ("@staticmethod", "m"),
+        ("@overload", "m"),
+        ("@override", "m"),
+    ],
+    ids=["unrelated-override", "unrelated-overload", "setter-of-another-name", "setter-on-another-function",
+         "staticmethod", "overload-never-imported", "override-never-imported"],
+)
+def test_other_decorators_are_still_reported(decorator, func):
+    source = MODULE + f'class A:\n    """A."""\n    {decorator}\n    def {func}(self): pass\n'
+    assert gaps(source) == [("method", f"A.{func}")]
 
 
 def test_private_names_need_all_flag():
