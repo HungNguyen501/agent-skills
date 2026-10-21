@@ -10,6 +10,7 @@ Nothing is written when any name is unknown or any destination skill exists (unl
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import re
@@ -79,14 +80,17 @@ def plan(hub, dest, names, force):
     available = find_skills(hub)
     errors, actions = [], []
     for name in names:
+        target = dest / SKILLS_DIR / name
         if name not in available:
             errors.append(f"Skill `{name}` not found. Available: {', '.join(available) or '(none)'}")
         elif has_symlink(available[name]):
             errors.append(f"Skill `{name}` contains a symlink; refusing to copy")
-        elif (dest / SKILLS_DIR / name).exists() and not force:
-            errors.append(f"{dest / SKILLS_DIR / name} exists; pass --force to replace it")
+        elif target.is_symlink() or (target.exists() and not target.is_dir()):
+            errors.append(f"{target} exists and is not a plain folder (a file or a link); remove it by hand first")
+        elif target.exists() and not force:
+            errors.append(f"{target} exists; pass --force to replace it")
         else:
-            actions.append((name, available[name], dest / SKILLS_DIR / name))
+            actions.append((name, available[name], target))
     return errors, actions
 
 
@@ -122,11 +126,11 @@ def load_manifest(path):
     return manifest
 
 
-def install(actions, skills_dir):
-    """Installs every skill or none: copies to private staging folders, then swaps each in with the old one kept as a backup.
+def swap_in(actions, skills_dir):
+    """Copies each skill into a private staging folder, then swaps it in, keeping the old one as a backup.
 
-    Any failure restores the backups, removes what this run installed and cleans up staging, so skills that were already
-    installed are never lost to a half-applied --force.
+    Returns [(target, backup or None)] for the caller to `commit` or `roll_back`. Any failure here restores the backups,
+    removes what this run installed and cleans up staging, so skills that were already installed are never lost.
     """
     skills_dir.mkdir(parents=True, exist_ok=True)
     staged, done = [], []
@@ -148,17 +152,41 @@ def install(actions, skills_dir):
                 raise
             done.append((target, backup))
     except Exception:
-        for target, backup in reversed(done):
-            shutil.rmtree(target, ignore_errors=True)
-            if backup:
-                backup.rename(target)
+        roll_back(done)
         raise
     finally:
         for staging, _ in staged:
             shutil.rmtree(staging, ignore_errors=True)
+    return done
+
+
+def roll_back(done):
+    """Undoes `swap_in`: removes the skills it installed and puts the previous ones back."""
+    for target, backup in reversed(done):
+        shutil.rmtree(target, ignore_errors=True)
+        if backup:
+            backup.rename(target)
+
+
+def commit(done):
+    """Deletes the backups once the whole install, metadata included, has succeeded. A backup that stays is reported."""
     for _, backup in done:
         if backup:
-            shutil.rmtree(backup, ignore_errors=True)
+            try:
+                shutil.rmtree(backup)
+            except OSError as exc:
+                print(f"warning: could not remove the old copy {backup}: {exc}", file=sys.stderr)
+
+
+def write_json_atomic(path, data):
+    """Writes `data` as JSON so a failed write never leaves a half-written file at `path`."""
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def update_manifest(manifest, skills_dir, names, revision):
@@ -171,6 +199,26 @@ def update_manifest(manifest, skills_dir, names, revision):
     # A manifest from before per-skill revisions has one shared revision, which is the best record for its old entries.
     manifest["revisions"] = {n: revision if n in names else known.get(n, previous) for n in manifest["skills"]}
     manifest["hub_revision"] = revision
+
+
+def apply_install(args, actions, manifest):
+    """Installs the skills and writes the metadata, undoing every change if any step fails."""
+    skills_dir = args.dest / SKILLS_DIR
+    instructions = args.dest / INSTRUCTIONS
+    done = swap_in(actions, skills_dir)
+    created = []
+    try:
+        update_manifest(manifest, skills_dir, {n for n, _, _ in actions}, hub_revision(args.hub))
+        if not instructions.exists():
+            write_instructions(args, manifest, instructions)
+            created.append(instructions)
+        write_json_atomic(skills_dir / ".hub-skills.json", manifest)  # last, so it never describes an install that failed
+    except Exception:
+        roll_back(done)
+        for path in created:
+            path.unlink(missing_ok=True)
+        raise
+    commit(done)
 
 
 def main(argv=None):
@@ -204,11 +252,7 @@ def main(argv=None):
         print("dry run: nothing written")
         return 0
 
-    install(actions, args.dest / SKILLS_DIR)
-    update_manifest(manifest, args.dest / SKILLS_DIR, {n for n, _, _ in actions}, hub_revision(args.hub))
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-    if not instructions.exists():
-        write_instructions(args, manifest, instructions)
+    apply_install(args, actions, manifest)
     print(f"installed {len(actions)} skill(s) into {args.dest / SKILLS_DIR}")
     return 0
 

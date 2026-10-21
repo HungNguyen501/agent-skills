@@ -290,3 +290,73 @@ def test_failed_swap_on_a_fresh_install_leaves_nothing_behind(env, monkeypatch):
 
     assert list(skills_dir.iterdir()) == []
     assert not (dest / module.INSTRUCTIONS).exists()
+
+
+def _fail_manifest_write(module, monkeypatch):
+    """Make the final, atomic manifest write fail the way a full disk would"""
+    def boom(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module.os, "replace", boom)
+
+
+def test_metadata_failure_after_the_swap_restores_the_old_skills(env, monkeypatch):
+    module, _, dest, skills_dir, run = env
+    run("--skills", "alpha,beta")
+    (dest / module.INSTRUCTIONS).unlink()
+    for name in ("alpha", "beta"):
+        (skills_dir / name / "marker.txt").write_text(f"old {name}\n", encoding="utf-8")
+    before = manifest(skills_dir)
+    _fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha,beta", "--force")
+
+    for name in ("alpha", "beta"):
+        assert (skills_dir / name / "marker.txt").read_text(encoding="utf-8") == f"old {name}\n"
+    assert sorted(p.name for p in skills_dir.iterdir()) == [".hub-skills.json", "alpha", "beta"]
+    assert manifest(skills_dir) == before
+    assert not (dest / module.INSTRUCTIONS).exists()
+
+
+def test_metadata_failure_on_a_fresh_install_leaves_nothing_behind(env, monkeypatch):
+    module, _, dest, skills_dir, run = env
+    _fail_manifest_write(module, monkeypatch)
+
+    with pytest.raises(OSError, match="disk full"):
+        run("--skills", "alpha")
+
+    assert list(skills_dir.iterdir()) == []
+    assert not (dest / module.INSTRUCTIONS).exists()
+
+
+def test_old_copies_are_removed_after_a_successful_install(env):
+    _, _, _, skills_dir, run = env
+    run("--skills", "alpha")
+    run("--skills", "alpha", "--force")
+
+    assert sorted(p.name for p in skills_dir.iterdir()) == [".hub-skills.json", "alpha"]
+
+
+def test_force_refuses_a_file_where_a_skill_folder_belongs(env, capsys):
+    _, _, _, skills_dir, run = env
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "alpha").write_text("not a folder\n", encoding="utf-8")
+
+    assert run("--skills", "alpha", "--force") == 1
+    assert "not a plain folder" in capsys.readouterr().err
+    assert (skills_dir / "alpha").read_text(encoding="utf-8") == "not a folder\n"
+
+
+def test_force_refuses_a_symlink_where_a_skill_folder_belongs(env, tmp_path, capsys):
+    from tests.mocks import symlink_or_skip
+
+    _, _, _, skills_dir, run = env
+    skills_dir.mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    symlink_or_skip(str(elsewhere), skills_dir / "alpha")
+
+    assert run("--skills", "alpha", "--force") == 1
+    assert "not a plain folder" in capsys.readouterr().err
+    assert elsewhere.exists()

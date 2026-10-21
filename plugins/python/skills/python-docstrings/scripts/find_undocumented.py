@@ -18,11 +18,15 @@ _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 _CONTAINERS = (ast.stmt, ast.ExceptHandler) + ((ast.match_case,) if hasattr(ast, "match_case") else ())
 # Decorators of definitions that take no docstring: overload stubs, property setters and deleters, and @override methods.
 _NO_DOCSTRING_DECORATORS = {"overload", "setter", "deleter", "override"}
+# Folders that hold installed or generated code, not the project's own. Hidden folders are skipped as well.
+_SKIPPED_DIRS = {"venv", "node_modules", "site-packages", "__pycache__"}
 
 
 def _takes_no_docstring(node):
     """True for an @overload stub, a property setter or deleter, or an @override method, which need no docstring of their own."""
-    for decorator in getattr(node, "decorator_list", []):
+    if isinstance(node, ast.ClassDef):
+        return False
+    for decorator in node.decorator_list:
         name = decorator.attr if isinstance(decorator, ast.Attribute) else getattr(decorator, "id", None)
         if name in _NO_DOCSTRING_DECORATORS:
             return True
@@ -71,8 +75,8 @@ def _python_files(paths, skip):
             yield path
         elif os.path.isdir(path):
             for root, dirs, files in os.walk(path, onerror=lambda e: skip(str(e))):
-                # Hidden folders are virtualenvs, caches and tool state.
-                dirs[:] = sorted(d for d in dirs if not d.startswith("."))
+                # Hidden folders are virtualenvs, caches and tool state. The named ones are installed or generated code.
+                dirs[:] = sorted(d for d in dirs if not d.startswith(".") and d not in _SKIPPED_DIRS)
                 for name in sorted(files):
                     if name.endswith(".py"):
                         yield os.path.join(root, name)

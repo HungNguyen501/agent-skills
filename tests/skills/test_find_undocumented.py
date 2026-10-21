@@ -106,3 +106,18 @@ def test_all_flag_reports_private_classes_and_their_members():
         ("class", "Public._Inner"),
         ("method", "Public._Inner.go"),
     ]
+
+
+def test_decorated_class_named_like_a_stub_is_still_reported():
+    assert gaps(MODULE + "@override\nclass A: pass\n") == [("class", "A")]
+
+
+def test_directory_walk_skips_hidden_and_installed_code_folders(tmp_path, capsys):
+    for folder in (".hidden", "venv", "node_modules", "site-packages", "__pycache__"):
+        (tmp_path / folder).mkdir()
+        (tmp_path / folder / "x.py").write_text(MODULE + "def f(): pass\n", encoding="utf-8")
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "ok.py").write_text(MODULE, encoding="utf-8")
+
+    assert fu.main([str(tmp_path)]) == 0
+    assert "0 undocumented, 0 skipped" in capsys.readouterr().out

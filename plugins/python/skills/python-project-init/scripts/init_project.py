@@ -21,8 +21,11 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 TOKEN_RE = re.compile(r"@@(\w+)@@")
 NAME_RE = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")  # used with fullmatch
+# ASCII only: Python normalizes identifiers (NFKC), so a ligature or lookalike letter would import under another name.
+PACKAGE_RE = re.compile(r"[a-z][a-z0-9_]*")
 # Used with fullmatch: "$" would also accept a trailing newline.
-PYTHON_RE = re.compile(r"3\.([1-9]\d?)")
+# [0-9] and not \d: \d also matches digits of other scripts, and int() accepts them.
+PYTHON_RE = re.compile(r"3\.([1-9][0-9]?)")
 # Python 3.9 reached end of life in October 2025, so older targets are rejected.
 MIN_MINOR = 10
 # Newest release the generated ruff target, mypy settings and CI were run against. The version goes into ruff's
@@ -66,8 +69,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if not NAME_RE.fullmatch(args.name):
         p.error(f"--name must be lowercase letters, digits and single hyphens, got {args.name!r}")
     args.package = args.package or args.name.replace("-", "_")
-    if not args.package.isidentifier() or args.package != args.package.lower() or args.package.startswith("_"):
-        p.error(f"--package must be a lowercase Python identifier, got {args.package!r}")
+    if not PACKAGE_RE.fullmatch(args.package):
+        p.error(f"--package must be lowercase ASCII letters, digits and underscores, starting with a letter, got {args.package!r}")
     if keyword.iskeyword(args.package) or args.package in RESERVED_PACKAGES:
         p.error(f"--package {args.package!r} is a Python keyword or a reserved folder name (src, tests)")
     version = PYTHON_RE.fullmatch(args.python)

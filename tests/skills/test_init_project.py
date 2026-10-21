@@ -18,7 +18,7 @@ def files(dest):
     return {p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file()}
 
 
-@pytest.mark.parametrize("package", ["class", "src", "tests", "Upper", "_private", "has-dash"])
+@pytest.mark.parametrize("package", ["class", "src", "tests", "Upper", "_private", "has-dash", "ﬁle", "пакет", "café", "pkg\n"])
 def test_rejects_bad_package_names(tmp_path, capsys, package):
     with pytest.raises(SystemExit) as exc:
         run(tmp_path / "p", "--package", package)
@@ -27,7 +27,7 @@ def test_rejects_bad_package_names(tmp_path, capsys, package):
     assert "--package" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("version", ["3.9", "3.012", "3.", "4.0", "3.x", "2.7", "3.99", "3.15", "3.12\n", " 3.12"])
+@pytest.mark.parametrize("version", ["3.9", "3.012", "3.", "4.0", "3.x", "2.7", "3.99", "3.15", "3.12\n", " 3.12", "3.1٢", "3.١٢"])
 def test_rejects_bad_python_versions(tmp_path, capsys, version):
     with pytest.raises(SystemExit):
         run(tmp_path / "p", "--python", version)
