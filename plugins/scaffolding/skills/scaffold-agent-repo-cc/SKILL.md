@@ -35,6 +35,6 @@ Also adds `.claude/settings.local.json` to `.gitignore`. Commit `settings.exampl
 
 - The destination must already exist; the script does not create or `git init` it.
 - An existing CLAUDE.md is never overwritten. Skills are listed only in a newly written file; for an existing one, say what to add by hand.
-- Copies go stale. To update, rerun with `--force` for the named skills and compare `hub_revision` in the manifest.
+- Copies go stale. To update, rerun with `--force` for the named skills and compare `revisions` in the manifest. It records the hub commit each skill was copied at, and `hub_revision` holds the latest install.
 - Install the smallest set that fits (one to three skills active per task). Do not install a whole domain by default.
 - Hub skills hold domain knowledge only. Put project-private facts in the destination's own CLAUDE.md or its own skills.

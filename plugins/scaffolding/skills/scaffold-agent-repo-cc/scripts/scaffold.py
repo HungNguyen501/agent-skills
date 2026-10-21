@@ -13,6 +13,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 SKILLS_DIR = ".claude/skills"
@@ -89,17 +90,70 @@ def plan(hub, dest, names, force):
     return errors, actions
 
 
-def main(argv=None):
-    """Parses arguments, prints the plan and, unless --dry-run, applies it."""
+def parse_args(argv):
+    """Parses the command line."""
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--hub", type=Path, required=True, help="path to the agent-skills hub checkout")
     ap.add_argument("--dest", type=Path, required=True, help="destination repo")
     ap.add_argument("--skills", required=True, help="comma-separated hub skill names")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and write nothing")
     ap.add_argument("--force", action="store_true", help="replace skills that already exist in the destination")
-    args = ap.parse_args(argv)
+    return ap.parse_args(argv)
 
-    names = [n.strip() for n in args.skills.split(",") if n.strip()]
+
+def load_manifest(path):
+    """Returns the manifest at `path`, or an empty one. Raises ValueError when the file is not a valid manifest."""
+    if not path.exists():
+        return {"skills": []}
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{path} is not valid JSON ({exc}). Fix or delete it, then rerun.") from exc
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("skills", []), list):
+        raise ValueError(f"{path} is not a hub manifest (expected an object with a skills list). Fix or delete it, then rerun.")
+    manifest.setdefault("skills", [])
+    return manifest
+
+
+def install(actions, skills_dir):
+    """Copies each skill into a private staging folder, then swaps it in, so a failed copy leaves installed skills untouched."""
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    staged = []
+    try:
+        for name, src, target in actions:
+            # mkdtemp gives a name no other process or user folder can hold, so cleanup only touches folders made here.
+            staging = Path(tempfile.mkdtemp(prefix=f".{name}-", dir=skills_dir))
+            staged.append((staging, target))
+            shutil.copytree(src, staging, ignore=IGNORE, dirs_exist_ok=True)
+    except Exception:
+        for staging, _ in staged:
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+    for staging, target in staged:
+        if target.exists():
+            shutil.rmtree(target)
+        staging.rename(target)
+
+
+def update_manifest(manifest, skills_dir, names, revision):
+    """Records what is installed. `revisions` holds the hub commit each skill was copied at, `hub_revision` the latest install."""
+    previous = manifest.get("hub_revision", "unknown")
+    known = manifest.get("revisions", {})
+    # Drop entries whose folder was deleted, so the manifest lists only what is installed.
+    installed = {n for n in manifest["skills"] if (skills_dir / n).is_dir()}
+    manifest["skills"] = sorted(installed | set(names))
+    # A manifest from before per-skill revisions has one shared revision, which is the best record for its old entries.
+    manifest["revisions"] = {n: revision if n in names else known.get(n, previous) for n in manifest["skills"]}
+    manifest["hub_revision"] = revision
+
+
+def main(argv=None):
+    """Prints the plan and, unless --dry-run, applies it."""
+    args = parse_args(argv)
+    names = list(dict.fromkeys(n.strip() for n in args.skills.split(",") if n.strip()))  # drops repeats, keeps order
+    if not names:
+        print("error: --skills lists no skill names", file=sys.stderr)
+        return 1
     if not (args.hub / "skills").is_dir():
         print(f"error: {args.hub} has no skills/ directory", file=sys.stderr)
         return 1
@@ -107,6 +161,11 @@ def main(argv=None):
         print(f"error: destination {args.dest} is not a directory", file=sys.stderr)
         return 1
     errors, actions = plan(args.hub, args.dest, names, args.force)
+    manifest_path = args.dest / SKILLS_DIR / ".hub-skills.json"
+    try:
+        manifest = load_manifest(manifest_path)  # read before any write, so a bad manifest cannot leave a half-applied install
+    except ValueError as exc:
+        errors.append(str(exc))
     if errors:
         print("\n".join(f"error: {e}" for e in errors), file=sys.stderr)
         return 1
@@ -119,29 +178,8 @@ def main(argv=None):
         print("dry run: nothing written")
         return 0
 
-    # Stage every copy first so a failed copy never removes a skill that is already installed.
-    staged = []
-    try:
-        for name, src, target in actions:
-            staging = target.with_name(f".{name}.new")
-            if staging.exists():
-                shutil.rmtree(staging)
-            staged.append((staging, target))
-            shutil.copytree(src, staging, ignore=IGNORE)
-    except Exception:
-        for staging, _ in staged:
-            shutil.rmtree(staging, ignore_errors=True)
-        raise
-    for staging, target in staged:
-        if target.exists():
-            shutil.rmtree(target)
-        staging.rename(target)
-    manifest_path = args.dest / SKILLS_DIR / ".hub-skills.json"
-    manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"skills": []}
-    manifest["hub_revision"] = hub_revision(args.hub)
-    # Drop entries whose folder was deleted, so the manifest lists only what is installed.
-    still_installed = {n for n in manifest["skills"] if (args.dest / SKILLS_DIR / n).is_dir()}
-    manifest["skills"] = sorted(still_installed | {n for n, _, _ in actions})
+    install(actions, args.dest / SKILLS_DIR)
+    update_manifest(manifest, args.dest / SKILLS_DIR, {n for n, _, _ in actions}, hub_revision(args.hub))
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     if not instructions.exists():
         lines = "\n".join(f"- `{n}`: {describe(args.hub / 'skills' / _domain(args.hub, n) / n)}" for n in manifest["skills"])

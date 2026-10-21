@@ -21,7 +21,8 @@ ASSETS = Path(__file__).resolve().parent.parent / "assets"
 
 TOKEN_RE = re.compile(r"@@(\w+)@@")
 NAME_RE = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
-PYTHON_RE = re.compile(r"^3\.\d{1,2}$")
+# 3.<minor> with no leading zero, so "3.012" is rejected rather than written into pyproject.toml.
+PYTHON_RE = re.compile(r"^3\.[1-9]\d?$")
 # Python 3.9 reached end of life in October 2025, so older targets are rejected.
 MIN_MINOR = 10
 # Names that would shadow or clash with the project's own top-level folders.
@@ -70,7 +71,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     if not LINE_LENGTH_MIN <= args.line_length <= LINE_LENGTH_MAX:
         p.error(f"--line-length must be between {LINE_LENGTH_MIN} and {LINE_LENGTH_MAX}")
     args.description = args.description or f"{args.name} Python project"
-    if re.search(r'["\\\x00-\x1f]', args.description):
+    if re.search(r'["\\\x00-\x1f\x7f]', args.description):
         p.error("--description must not contain quotes, backslashes or control characters (it goes into TOML)")
     return args
 
@@ -133,7 +134,7 @@ def template_actions(pairs: list[tuple[str, str]], tokens: dict[str, str]) -> li
 def build_plan(args: argparse.Namespace) -> list[Action]:
     """Returns every file to create."""
     tokens = build_tokens(args)
-    src_dir = "src/" + args.package if args.layout == "lib" else "src"
+    src_dir = tokens["src_hint"]
     pairs = [
         ("project/pyproject.toml.tmpl", "pyproject.toml"),
         ("project/Makefile.tmpl", "Makefile"),
@@ -167,6 +168,34 @@ def conflict_reason(path: Path) -> str | None:
     return None
 
 
+def find_conflicts(dest: Path, actions: list[Action]) -> dict[str, str]:
+    """Maps each destination path that cannot be created to the reason."""
+    paths = [a.dest for a in actions]
+    if len(paths) != len(set(paths)):
+        dupes = sorted({p for p in paths if paths.count(p) > 1})
+        raise SystemExit(f"error: plan writes the same path twice: {', '.join(dupes)}")
+    return {a.dest: reason for a in actions if (reason := conflict_reason(dest / a.dest))}
+
+
+def print_plan(args: argparse.Namespace, dest: Path, actions: list[Action], conflicts: dict[str, str]) -> None:
+    """Prints the settings and one line per file."""
+    print(f"Project: {args.name}  package: {args.package}  layout: {args.layout}  python: >={args.python}  line length: {args.line_length}")
+    print(f"Destination: {dest}")
+    for action in actions:
+        reason = conflicts.get(action.dest)
+        print(f"  {'conflict' if reason else 'create  '} {action.dest}" + (f" ({reason})" if reason else ""))
+
+
+def write_actions(dest: Path, actions: list[Action]) -> None:
+    """Writes every file. Raises OSError, which can leave a partly written project."""
+    for action in actions:
+        target = dest / action.dest
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(action.content)
+        if action.executable:
+            target.chmod(0o755)
+
+
 def main(argv: list[str]) -> int:
     """Prints the plan and, with --apply and no conflicts, writes the files."""
     args = parse_args(argv)
@@ -175,33 +204,16 @@ def main(argv: list[str]) -> int:
         print(f"error: {dest} exists and is not a directory", file=sys.stderr)
         return 1
     actions = build_plan(args)
-
-    paths = [a.dest for a in actions]
-    if len(paths) != len(set(paths)):
-        dupes = sorted({p for p in paths if paths.count(p) > 1})
-        raise SystemExit(f"error: plan writes the same path twice: {', '.join(dupes)}")
-
-    conflicts = {a.dest: reason for a in actions if (reason := conflict_reason(dest / a.dest))}
-    print(f"Project: {args.name}  package: {args.package}  layout: {args.layout}  python: >={args.python}  "
-          f"line length: {args.line_length}")
-    print(f"Destination: {dest}")
-    for action in actions:
-        reason = conflicts.get(action.dest)
-        print(f"  {'conflict' if reason else 'create  '} {action.dest}" + (f" ({reason})" if reason else ""))
+    conflicts = find_conflicts(dest, actions)
+    print_plan(args, dest, actions, conflicts)
     if conflicts:
         print(f"\n{len(conflicts)} path(s) cannot be created. Nothing written. Pick another directory or remove or merge them by hand.")
         return 1
     if not args.apply:
         print(f"\nDry run: {len(actions)} file(s) would be created. Re-run with --apply to write them.")
         return 0
-
     try:
-        for action in actions:
-            target = dest / action.dest
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(action.content)
-            if action.executable:
-                target.chmod(0o755)
+        write_actions(dest, actions)
     except OSError as error:
         print(f"error: {error}. The project may be partly written in {dest}.", file=sys.stderr)
         return 1

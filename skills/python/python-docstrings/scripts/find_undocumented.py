@@ -13,12 +13,15 @@ import os
 import sys
 
 _DEFS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
-# Decorators of definitions that take no docstring: overload stubs and property setters and deleters.
-_NO_DOCSTRING_DECORATORS = {"overload", "setter", "deleter"}
+# Statement containers that can hold definitions: ast.ExceptHandler and ast.match_case are not ast.stmt subclasses.
+# match_case exists from Python 3.10 on.
+_CONTAINERS = (ast.stmt, ast.ExceptHandler) + ((ast.match_case,) if hasattr(ast, "match_case") else ())
+# Decorators of definitions that take no docstring: overload stubs, property setters and deleters, and @override methods.
+_NO_DOCSTRING_DECORATORS = {"overload", "setter", "deleter", "override"}
 
 
 def _takes_no_docstring(node):
-    """True for an @overload stub or a property setter or deleter, which share the documented definition."""
+    """True for an @overload stub, a property setter or deleter, or an @override method, which need no docstring of their own."""
     for decorator in getattr(node, "decorator_list", []):
         name = decorator.attr if isinstance(decorator, ast.Attribute) else getattr(decorator, "id", None)
         if name in _NO_DOCSTRING_DECORATORS:
@@ -40,7 +43,7 @@ def find_undocumented(tree, include_private=False):
         for node in ast.iter_child_nodes(parent):
             if not isinstance(node, _DEFS):
                 # Defs can hide inside if/try/with blocks.
-                if isinstance(node, ast.stmt):
+                if isinstance(node, _CONTAINERS):
                     yield from visit(node, prefix, in_class)
                 continue
 
