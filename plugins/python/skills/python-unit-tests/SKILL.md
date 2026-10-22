@@ -22,6 +22,7 @@ Never change the code under test to make a test pass, unless the test found a re
 ## Layout and naming
 
 - Mirror the source tree: `src/billing/invoice.py` is tested in `tests/billing/test_invoice.py`.
+- A mirrored tree repeats basenames (`tests/jobs/hubspot/test_etl.py`, `tests/jobs/qlik/test_etl.py`). Default `prepend` import mode imports both as `test_etl` and aborts with "import file mismatch". Set `addopts = ["--import-mode=importlib"]` under `[tool.pytest.ini_options]`: no `__init__.py` files and no per-directory upkeep. Test files then cannot import each other, so shared helpers go in `conftest.py` or fixtures. If the repo instead uses `__init__.py` markers, they must cover `tests/` and every subdirectory. Markers only below `tests/` create a top-level package that can shadow a same-named package in `src/`. Keep the repo's working setup.
 - Name tests `test_<function>_<scenario>`: `test_parse_duration_rejects_zero`. The name must say what breaks when the test fails.
 - Group related tests in a plain function list. Use a class only to share a fixture or marker.
 - Put shared fixtures in `conftest.py`. Do not import fixtures from helper modules into test files, because linters flag the unused import and the coupling is hidden.

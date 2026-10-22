@@ -95,6 +95,20 @@
     ]
   },
   {
+    "id": "mirrored-layout-duplicate-basenames",
+    "skills": [
+      "python-unit-tests"
+    ],
+    "query": "Our tests/ mirrors src/, so we'll have tests/jobs/hubspot/test_etl.py and tests/jobs/qlik/test_etl.py. There are no __init__.py files in tests/ and src/ also has a jobs package. Anything to set up so pytest collects both?",
+    "files": [],
+    "expected_behavior": [
+      "Warns that the default prepend import mode fails with 'import file mismatch' on the second test_etl.py",
+      "Recommends --import-mode=importlib in the pytest config as the default fix",
+      "Warns that adding __init__.py only under tests/jobs/ makes a top-level 'jobs' package that can shadow src/jobs, so markers must reach tests/ itself if that route is chosen",
+      "Says to keep the repo's existing import mode or package markers if it already works"
+    ]
+  },
+  {
     "id": "mock-external-clients",
     "skills": [
       "python-unit-tests"
