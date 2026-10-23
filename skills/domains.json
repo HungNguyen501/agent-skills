@@ -3,5 +3,6 @@
   "authoring": "Guidance for writing, reviewing and testing agent skills.",
   "databricks": "Databricks system-table, metric-view and cost knowledge for data-platform assistants.",
   "python": "Python conventions and project setup: code style, docstrings, unit tests and new-project scaffolding.",
+  "review": "Code review checklists that apply to any language or stack.",
   "scaffolding": "Generating the agent-facing layout (skills, instruction files, settings) of a new project for a given coding agent."
 }

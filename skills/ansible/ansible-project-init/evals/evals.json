@@ -10,7 +10,7 @@
       "Collects or defaults name edge-platform, environments staging and production, connection ssh",
       "Runs scripts/init_project.py without --apply first and shows the plan before applying",
       "Result has ansible.cfg, pyproject.toml, requirements.yml, Makefile, .ansible-lint, .yamllint, inventories/<env>/ for each environment, playbooks/site.yml, an example role with molecule scenario, .github/workflows and AGENTS.md",
-      "After applying, installs every skill under skills/ansible/ except ansible-project-init with /scaffold-repo claude (dry run first)",
+      "After applying, installs every skill under skills/ansible/ except ansible-project-init, plus code-review from skills/review/, with /scaffold-repo claude (dry run first)",
       "Runs make install, make lint and make syntax in the new repo and reports the results"
     ]
   },

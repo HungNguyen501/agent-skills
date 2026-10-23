@@ -1,0 +1,6 @@
+{
+  "name": "review",
+  "description": "Code review checklists that apply to any language or stack.",
+  "version": "0.1.0",
+  "license": "Apache-2.0"
+}
