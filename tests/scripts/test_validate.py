@@ -1,4 +1,5 @@
 """Unit tests for module validate"""
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -6,7 +7,7 @@ import pytest
 
 from build import package_skill
 from skilllib import discover, load
-from tests.mocks import DEEPLY_NESTED_JSON, add_symlink_loops, fm, make_skill, symlink_or_skip
+from tests.mocks import add_symlink_loops, fm, make_skill, symlink_or_skip
 from validate import _check_links, _local_links, check_skill, main
 
 
@@ -296,11 +297,20 @@ def test_check_skill_yaml_recursion_error(tmp_path):
     assert check_skill(good, seen)[0] == []
 
 
-def test_check_skill_deeply_nested_evals(tmp_path):
+def test_check_skill_deeply_nested_evals(tmp_path, monkeypatch):
     """A RecursionError from the JSON parser is a finding for that skill, and the next skill is still checked"""
     bad = make_skill(tmp_path, "nested-evals", evals=None)
     (bad / "evals").mkdir()
-    (bad / "evals" / "evals.json").write_text(DEEPLY_NESTED_JSON, encoding="utf-8")
+    (bad / "evals" / "evals.json").write_text("[]", encoding="utf-8")
+    real_loads = json.loads
+
+    def loads(text, *args, **kwargs):
+        # The nesting depth that overflows the parser depends on the Python version and stack size (3.14 parses 100k levels), so raise it directly.
+        if text == "[]":
+            raise RecursionError("maximum recursion depth exceeded while decoding a JSON array")
+        return real_loads(text, *args, **kwargs)
+
+    monkeypatch.setattr(json, "loads", loads)
     good = make_skill(tmp_path, "good-after-evals")
     seen: dict = {}
     errors = check_skill(bad, seen)[0]

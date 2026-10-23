@@ -11,6 +11,7 @@ Standard library only (Python 3.9+).
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -180,7 +181,8 @@ def build_tokens(args: argparse.Namespace) -> dict[str, str]:
         "structure": build_structure(args.name, envs),
         "environments_spaced": " ".join(envs),
         "environments_text": ", ".join(f"`{e}`" for e in envs),
-        "environments_flow": "[" + ", ".join(envs) + "]",
+        # Quoted so names such as true, null or yes stay strings in the workflow choice options.
+        "environments_flow": json.dumps(envs),
         "protected_line": " ".join(["PROTECTED_ENVS :=", *protected]),
         "connection_text": "through AWS Systems Manager (SSM), without SSH keys" if ssm else "over SSH",
         "collections": collections,

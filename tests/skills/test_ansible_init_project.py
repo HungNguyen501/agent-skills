@@ -110,7 +110,17 @@ def test_environments_drive_inventories_makefile_and_workflows(tmp_path):
     assert not (dest / "inventories/staging").exists()
     assert "ENVIRONMENTS := dev qa prod" in read(dest, "Makefile")
     assert "PROTECTED_ENVS := prod" in read(dest, "Makefile")
-    assert "options: [dev, qa, prod]" in read(dest, ".github/workflows/ansible-check.yaml")
+    assert 'options: ["dev", "qa", "prod"]' in read(dest, ".github/workflows/ansible-check.yaml")
+
+
+@pytest.mark.parametrize("workflow", ["ansible-check.yaml", "ansible-apply.yaml"])
+def test_yaml_special_environment_names_stay_strings_in_workflow_options(tmp_path, workflow):
+    dest = tmp_path / "p"
+    run(dest, "--apply", "--environments", "true,null,yes,staging")
+
+    parsed = yaml.safe_load(read(dest, f".github/workflows/{workflow}"))
+    options = parsed[True]["workflow_dispatch"]["inputs"]["environment"]["options"]  # PyYAML reads the key `on` as True
+    assert options == ["true", "null", "yes", "staging"]
 
 
 def test_only_production_like_names_are_protected_by_default(tmp_path):
