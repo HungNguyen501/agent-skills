@@ -1,0 +1,6 @@
+---
+- name: Base | Install packages
+  ansible.builtin.import_tasks: packages.yml
+
+- name: Base | Configure login banner
+  ansible.builtin.import_tasks: motd.yml

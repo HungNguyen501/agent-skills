@@ -1,0 +1,18 @@
+- name: Configure AWS credentials (OIDC)
+  uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6
+  with:
+    role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+    aws-region: ${{ vars.AWS_REGION }}
+
+- name: Install session-manager-plugin
+  shell: bash
+  run: |
+    set -euo pipefail
+    # Pinned version and checksum. To update: read plugin/latest/VERSION, download that version, run sha256sum on it.
+    version=1.2.896.0
+    sha256=53f51fcc67314a4bf85888a38a3967cd41f8d0f28a60a9469a63acf935ba713e
+    deb="${RUNNER_TEMP}/session-manager-plugin.deb"
+    curl -fsSL -o "${deb}" "https://s3.amazonaws.com/session-manager-downloads/plugin/${version}/ubuntu_64bit/session-manager-plugin.deb"
+    echo "${sha256}  ${deb}" | sha256sum -c -
+    sudo dpkg -i "${deb}"
+    session-manager-plugin --version

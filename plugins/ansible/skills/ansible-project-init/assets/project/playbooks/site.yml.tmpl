@@ -1,0 +1,4 @@
+---
+# Landscape: everything deployed together. Import one playbook per host type, in no particular order. Do not add tasks here.
+- name: Base configuration
+  ansible.builtin.import_playbook: base.yml

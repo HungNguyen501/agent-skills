@@ -1,0 +1,25 @@
+---
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: vault\.yml$
+      - id: end-of-file-fixer
+        exclude: vault\.yml$
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: vault-files-encrypted
+        name: vault.yml files are encrypted
+        entry: scripts/check-vault-encrypted.sh
+        language: script
+        files: (^|/)vault\.yml$
+
+      - id: make-lint
+        name: make lint (yamllint and ansible-lint)
+        entry: make lint
+        language: system
+        pass_filenames: false

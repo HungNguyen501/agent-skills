@@ -1,0 +1,25 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Verify | Read the login banner
+      ansible.builtin.slurp:
+        src: /etc/motd
+      register: base_verify_motd
+
+    - name: Verify | Assert the banner is in place
+      ansible.builtin.assert:
+        that:
+          - "'Managed by Ansible' in (base_verify_motd.content | b64decode)"
+        fail_msg: /etc/motd does not hold the role banner
+
+    - name: Verify | Collect installed packages
+      ansible.builtin.package_facts:
+
+    - name: Verify | Assert the base packages are installed
+      ansible.builtin.assert:
+        that:
+          - "'curl' in ansible_facts.packages"
+          - "'ca-certificates' in ansible_facts.packages"
+        fail_msg: A base package is missing

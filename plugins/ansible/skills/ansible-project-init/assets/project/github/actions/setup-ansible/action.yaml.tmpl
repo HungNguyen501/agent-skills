@@ -1,0 +1,43 @@
+---
+name: Set up Ansible
+description: Install Python, uv, the locked tools and the collections, and write the vault password file of one environment.
+inputs:
+  vault-password:
+    description: Vault password of the target environment. Leave empty for jobs that need no vault.
+    required: false
+    default: ""
+  environment:
+    description: Target environment, used in the vault password file name. Required when vault-password is set.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Set up Python @@python@@
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: "@@python@@"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        enable-cache: true
+
+    - name: Install tools and collections
+      shell: bash
+      run: |
+        set -euo pipefail
+        uv sync --locked
+        uv run ansible-galaxy collection install -r requirements.yml -p .ansible/collections
+        echo "${GITHUB_WORKSPACE}/.venv/bin" >> "${GITHUB_PATH}"
+
+    - name: Write vault password file
+      if: inputs.vault-password != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        install -d -m 700 "${HOME}/.vault"
+        (umask 077 && printf '%s' "${VAULT_PASSWORD}" > "${HOME}/.vault/@@name@@_${ENVIRONMENT}")
+      env:
+        VAULT_PASSWORD: ${{ inputs.vault-password }}
+        ENVIRONMENT: ${{ inputs.environment }}

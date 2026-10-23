@@ -1,0 +1,9 @@
+---
+# Type playbook: a list of roles. Keep logic in the roles.
+- name: Configure base hosts
+  hosts: base
+  gather_facts: true
+  roles:
+    - role: base
+      tags:
+        - base

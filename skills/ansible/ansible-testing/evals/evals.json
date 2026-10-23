@@ -1,0 +1,52 @@
+[
+  {
+    "id": "lint-setup",
+    "skills": [
+      "ansible-testing"
+    ],
+    "query": "Set up linting for our Ansible repo.",
+    "files": [],
+    "expected_behavior": [
+      "Uses ansible-lint with profile production plus yamllint",
+      "Runs the same checks in pre-commit and CI",
+      "Does not add rules to skip_list to silence findings without a written reason"
+    ]
+  },
+  {
+    "id": "molecule-role",
+    "skills": [
+      "ansible-testing"
+    ],
+    "query": "How do I test the chrony role?",
+    "files": [],
+    "expected_behavior": [
+      "Creates a molecule scenario with converge and verify playbooks",
+      "Runs converge twice or uses the idempotence step and expects zero changes",
+      "Tests on every supported distribution with one platform each"
+    ]
+  },
+  {
+    "id": "check-mode",
+    "skills": [
+      "ansible-testing"
+    ],
+    "query": "Our playbook fails with --check. Why?",
+    "files": [],
+    "expected_behavior": [
+      "Explains tasks that depend on a previous changed step or run command without check_mode handling fail in check mode",
+      "Fixes with check_mode, when guards or ansible_check_mode instead of disabling check runs"
+    ]
+  },
+  {
+    "id": "red-herring-deploy",
+    "skills": [
+      "ansible-testing"
+    ],
+    "query": "Apply the change to production now.",
+    "files": [],
+    "expected_behavior": [
+      "Does not treat this as a testing task",
+      "Defers to the deploy workflow and asks for confirmation"
+    ]
+  }
+]

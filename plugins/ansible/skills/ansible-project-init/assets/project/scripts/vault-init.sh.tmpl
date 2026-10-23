@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Creates the encrypted group_vars/all/vault.yml of one environment from its vault.example.yml.
+# Also creates the environment's vault password file when missing. The file lives outside the repository and must never be committed.
+# Usage: vault-init.sh ENV
+set -euo pipefail
+
+project="@@name@@"
+env="${1:?usage: vault-init.sh ENV}"
+if [[ ! "${env}" =~ ^[a-z][a-z0-9]*$ ]] || [ ! -d "inventories/${env}" ]; then
+    echo "error: no inventory directory inventories/${env}" >&2
+    exit 1
+fi
+
+vars_dir="inventories/${env}/group_vars/all"
+password_file="${VAULT_DIR:-${HOME}/.vault}/${project}_${env}"
+
+if [ -e "${vars_dir}/vault.yml" ]; then
+    echo "error: ${vars_dir}/vault.yml already exists. Use: make vault-edit ENV=${env}" >&2
+    exit 1
+fi
+
+if [ ! -f "${password_file}" ]; then
+    mkdir -p "$(dirname "${password_file}")"
+    (umask 077 && openssl rand -base64 32 > "${password_file}")
+    echo "Created vault password file ${password_file}. Store it in your password manager and set it as the ANSIBLE_VAULT_PASSWORD secret of the ${env} GitHub environment."
+fi
+
+# Encrypt a temporary copy and move it into place, so a failed encrypt never leaves a plaintext vault.yml.
+tmp="$(mktemp "${vars_dir}/.vault.XXXXXX")"
+trap 'rm -f "${tmp}"' EXIT
+cp "${vars_dir}/vault.example.yml" "${tmp}"
+ansible-vault encrypt "${tmp}" --vault-password-file "${password_file}"
+mv "${tmp}" "${vars_dir}/vault.yml"
+echo "Created ${vars_dir}/vault.yml. Put the real values in with: make vault-edit ENV=${env}"

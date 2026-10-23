@@ -1,0 +1,53 @@
+[
+  {
+    "id": "layout-per-env",
+    "skills": [
+      "ansible-inventory-vars"
+    ],
+    "query": "Design the inventory for staging and production with plaintext and secret variables.",
+    "files": [],
+    "expected_behavior": [
+      "Uses one inventory directory per environment with hosts file, group_vars/ and host_vars/ as directories",
+      "Splits vars.yml and vault.yml per group and references vault_ variables from vars.yml",
+      "Keeps environments in separate directories so one cannot affect the other"
+    ]
+  },
+  {
+    "id": "extra-vars-misuse",
+    "skills": [
+      "ansible-inventory-vars"
+    ],
+    "query": "We pass everything with -e on the command line from CI. Is that fine?",
+    "files": [],
+    "expected_behavior": [
+      "Explains inventory variables describe desired state and -e is for one-off overrides",
+      "Recommends moving stable values into group_vars",
+      "Mentions extra vars have the highest precedence and hide inventory values"
+    ]
+  },
+  {
+    "id": "dynamic-source",
+    "skills": [
+      "ansible-inventory-vars"
+    ],
+    "query": "Our hosts live in AWS and change daily. How should the inventory work?",
+    "files": [],
+    "expected_behavior": [
+      "Uses a dynamic inventory plugin config file inside the inventory directory for discovered data",
+      "Keeps only to-be data that has no other source statically",
+      "Separates as-is facts from to-be variables"
+    ]
+  },
+  {
+    "id": "red-herring-vault",
+    "skills": [
+      "ansible-inventory-vars"
+    ],
+    "query": "How do I rotate the vault password?",
+    "files": [],
+    "expected_behavior": [
+      "Does not answer with inventory layout",
+      "Defers to vault handling"
+    ]
+  }
+]

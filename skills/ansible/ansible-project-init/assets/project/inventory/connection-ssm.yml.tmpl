@@ -1,0 +1,9 @@
+---
+# How Ansible reaches the hosts of the @@env@@ environment: AWS Systems Manager, no SSH keys or open ports.
+# Each host sets ansible_aws_ssm_instance_id in hosts.yml.
+ansible_connection: community.aws.aws_ssm
+ansible_aws_ssm_region: us-east-1
+ansible_aws_ssm_bucket_name: replace-me-ssm-transfer-bucket
+ansible_aws_ssm_s3_addressing_style: virtual
+ansible_become: true
+ansible_python_interpreter: /usr/bin/python3

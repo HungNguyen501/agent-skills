@@ -1,0 +1,21 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Python and tooling
+.venv/
+__pycache__/
+.ansible/
+*.retry
+
+# Secrets: vault password files and plaintext exports must never be committed
+.env
+.env.*
+!.env.example
+*.vault-pass
+.vault_pass
+*.plaintext.*
+
+# Logs
+*.log
+log/

@@ -1,0 +1,9 @@
+---
+- name: Motd | Render login banner
+  ansible.builtin.template:
+    src: motd.j2
+    dest: "{{ __base_motd_dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true

@@ -9,7 +9,6 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 GOOD_EVALS = [{"id": str(i), "query": "q", "expected_behavior": ["b"]} for i in range(3)]
 DEEPLY_NESTED = "[" * 2000 + "]" * 2000  # makes yaml.safe_load raise RecursionError (about 0.5 s, so use it sparingly)
-DEEPLY_NESTED_JSON = "[" * 100_000 + "]" * 100_000  # makes json.loads raise RecursionError; depth 5000 still parses
 
 
 def make_skill(base: Path, name: str, frontmatter: str | None = None, body: str = "Body.\n", evals=GOOD_EVALS, files=None) -> Path:
