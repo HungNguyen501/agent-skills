@@ -25,6 +25,11 @@
       "description": "Python conventions and project setup: code style, docstrings, unit tests and new-project scaffolding."
     },
     {
+      "name": "review",
+      "source": "./plugins/review",
+      "description": "Code review checklists that apply to any language or stack."
+    },
+    {
       "name": "scaffolding",
       "source": "./plugins/scaffolding",
       "description": "Generating the agent-facing layout (skills, instruction files, settings) of a new project for a given coding agent."

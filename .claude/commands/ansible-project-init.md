@@ -5,4 +5,4 @@ argument-hint: <dest-path> [project-name] [--environments staging,production] [-
 
 Parse $ARGUMENTS as destination path, optional project name and optional flags. If the destination is missing, ask for it. Default the name to the destination's folder name in lowercase with hyphens.
 
-Follow the `ansible-project-init` skill (`skills/ansible/ansible-project-init/SKILL.md` in this repo). The hub is this repo. Run the dry run first and show it before applying. Then install the hub's ansible skills into the destination as its step 4 says, and verify the new project.
+Follow the `ansible-project-init` skill (`skills/ansible/ansible-project-init/SKILL.md` in this repo). The hub is this repo. Run the dry run first and show it before applying. Then install the hub's ansible skills and the `code-review` skill into the destination as its step 4 says, and verify the new project.

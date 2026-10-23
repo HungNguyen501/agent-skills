@@ -1,0 +1,78 @@
+[
+  {
+    "id": "review-uncommitted",
+    "skills": [
+      "code-review"
+    ],
+    "query": "Review my changes before I open a PR.",
+    "files": [],
+    "expected_behavior": [
+      "Takes the current uncommitted changes as the target because no path was given",
+      "Checks every section: correctness, code quality, performance and resources, overengineering, error handling",
+      "Reports each issue with an exact file and line, a severity, a one-sentence description and a concrete fix"
+    ]
+  },
+  {
+    "id": "swallowed-exception",
+    "skills": [
+      "code-review"
+    ],
+    "query": "Review src/sync.py.",
+    "files": [
+      "src/sync.py"
+    ],
+    "expected_behavior": [
+      "Flags a bare or broad except that logs and continues as a silent failure, with a severity",
+      "Flags an external call with no timeout",
+      "Gives a concrete code change for each finding, not 'consider improving'"
+    ]
+  },
+  {
+    "id": "duplicated-logic",
+    "skills": [
+      "code-review"
+    ],
+    "query": "Second opinion on what another agent wrote in the billing module.",
+    "files": [],
+    "expected_behavior": [
+      "Lists every instance of duplicated logic, not just the first, and proposes one specific abstraction",
+      "Flags any function over about 30 lines as doing too much",
+      "Does not propose a new abstraction for code that has only one use"
+    ]
+  },
+  {
+    "id": "ansible-target",
+    "skills": [
+      "code-review"
+    ],
+    "query": "Review the roles/nginx directory.",
+    "files": [],
+    "expected_behavior": [
+      "Applies the same checklist to a directory target, reviewing every file in it",
+      "Does not report style preferences as critical or major"
+    ]
+  },
+  {
+    "id": "no-issues",
+    "skills": [
+      "code-review"
+    ],
+    "query": "Review this two-line rename in utils.py.",
+    "files": [],
+    "expected_behavior": [
+      "States that no issues were found instead of inventing findings",
+      "Still checks that every caller of the renamed symbol is updated"
+    ]
+  },
+  {
+    "id": "not-this-skill",
+    "skills": [
+      "code-review"
+    ],
+    "query": "Write unit tests for the invoice parser.",
+    "files": [],
+    "expected_behavior": [
+      "Does not use code-review because the task is writing tests, not reviewing code"
+    ]
+  }
+]

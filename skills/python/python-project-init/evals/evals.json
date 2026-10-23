@@ -10,7 +10,7 @@
       "Gathers or defaults inputs: name order-sync, package order_sync, Python 3.12, app layout, line length 140",
       "Runs scripts/init_project.py without --apply first and shows the plan to the user before applying",
       "Result has pyproject.toml with uv and ruff config, Makefile with install, lint, typecheck, lint-yaml, unit-tests, scripts/ci.sh, configs/.pre-commit-config.yaml, .github/workflows/ci.yaml, AGENTS.md, .env.example and tests/ mirroring src/",
-      "After applying, installs every skill under skills/python/ except python-project-init with /scaffold-repo claude (dry run first)",
+      "After applying, installs every skill under skills/python/ except python-project-init, plus code-review from skills/review/, with /scaffold-repo claude (dry run first)",
       "Runs make install, make lint and make unit-tests in the new project and reports the results"
     ]
   },
@@ -61,7 +61,7 @@
     "query": "Init a Python project in ~/work/billing, and give it the team's python skills.",
     "files": [],
     "expected_behavior": [
-      "Lists skills/python/ and picks every skill except python-project-init instead of a remembered list",
+      "Lists skills/python/ and picks every skill except python-project-init instead of a remembered list, and adds code-review",
       "Runs /scaffold-repo claude <dest> with those names, dry run shown before apply",
       "Does not copy skill files by hand",
       "Mentions the manifest pins the hub commit"

@@ -54,7 +54,7 @@ Run the same command with `--apply`. The script does not run `git init`. Run it 
 
 Copy every ansible skill of this hub into `DEST` with the `/scaffold-repo` command (the `scaffold-agent-repo-cc` skill for Claude Code, `scaffold-agent-repo-codex` for Codex):
 
-1. List `skills/ansible/` and take every skill except `ansible-project-init`. Do not hardcode the names, new ansible skills must be included.
+1. List `skills/ansible/` and take every skill except `ansible-project-init`. Do not hardcode the names, new ansible skills must be included. Add `code-review` from `skills/review/`.
 2. Run `/scaffold-repo claude DEST <comma-separated names>`, or `codex` for a Codex user.
 3. Run its dry run first, show it, then apply.
 
