@@ -1,0 +1,78 @@
+ProjectName := @@name@@
+ENVIRONMENTS := @@environments_spaced@@
+# Environments that need CONFIRM=apply-<env> before make deploy runs.
+@@protected_line@@
+PLAYBOOK ?= playbooks/site.yml
+export VAULT_DIR ?= $(HOME)/.vault
+# Passed to scripts/run-playbook.sh through the environment, never spliced into a shell command line.
+export PLAYBOOK LIMIT TAGS SKIP_TAGS
+export ANSIBLE_COLLECTIONS_PATH := $(CURDIR)/.ansible/collections
+
+MAKEFLAGS += -s
+.DEFAULT_GOAL := help
+
+check-env:
+ifndef ENV
+	$(error ENV is not set. Use one of: $(ENVIRONMENTS))
+else ifeq ($(filter $(ENV),$(ENVIRONMENTS)),)
+	$(error ENV must be one of: $(ENVIRONMENTS), got '$(ENV)')
+endif
+
+install:
+	@uv sync --all-groups
+	@uv run ansible-galaxy collection install -r requirements.yml -p .ansible/collections
+	@if [ -d .git ]; then uv run pre-commit install; \
+	else echo "Not a git repository: run git init, then make install again to enable the pre-commit hooks."; fi
+
+lint:
+	@uv run yamllint -c .yamllint .
+	@uv run ansible-lint
+
+scan:  # secret scan of the committed git history with gitleaks. Needs a running Docker daemon.
+	@docker run --rm -v "$(CURDIR):/repo" \
+		-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+		ghcr.io/gitleaks/gitleaks:v8.30.1 git --redact --no-banner /repo
+
+syntax:
+	@for env in $(ENVIRONMENTS); do \
+		echo "==> syntax-check $(PLAYBOOK) with inventories/$$env"; \
+		uv run ansible-playbook --syntax-check -i inventories/$$env $(PLAYBOOK) || exit 1; \
+	done
+
+test:  # molecule: every role that has a molecule/ folder. Needs a running Docker daemon.
+	@for dir in roles/*/molecule; do \
+		[ -d "$$dir" ] || continue; \
+		role=$$(dirname "$$dir"); \
+		echo "==> molecule test $$role"; \
+		(cd "$$role" && uv run molecule test) || exit 1; \
+	done
+
+check: check-env  # dry run with a diff: make check ENV=staging [PLAYBOOK=..] [LIMIT=..] [TAGS=..] [SKIP_TAGS=..]
+	@ENVIRONMENT=$(ENV) MODE=check uv run scripts/run-playbook.sh
+
+deploy: check-env  # real run. Protected environments also need CONFIRM=apply-<env>
+	@if echo " $(PROTECTED_ENVS) " | grep -q " $(ENV) " && [ "$(CONFIRM)" != "apply-$(ENV)" ]; then \
+		echo "error: $(ENV) is protected. Run make check ENV=$(ENV) first, review the diff, then add CONFIRM=apply-$(ENV)" >&2; exit 1; \
+	fi
+	@ENVIRONMENT=$(ENV) MODE=apply uv run scripts/run-playbook.sh
+
+vault-init: check-env  # create the encrypted vault.yml and the password file of one environment
+	@uv run scripts/vault-init.sh $(ENV)
+
+vault-edit: check-env  # edit the encrypted vault.yml of one environment
+	@uv run ansible-vault edit inventories/$(ENV)/group_vars/all/vault.yml --vault-password-file $(VAULT_DIR)/$(ProjectName)_$(ENV)
+
+.PHONY: check-env install lint scan syntax test check deploy vault-init vault-edit help
+help: Makefile
+	@echo "$(ProjectName) - Available Commands\n"
+	@echo "  make install                              - Install tools, collections and pre-commit hooks"
+	@echo "  make lint                                 - yamllint and ansible-lint (production profile)"
+	@echo "  make scan                                 - gitleaks secret scan of the history (needs Docker)"
+	@echo "  make syntax                               - ansible-playbook --syntax-check for every environment"
+	@echo "  make test                                 - Molecule tests of every role (needs Docker)"
+	@echo "  make check ENV=<env> [LIMIT= TAGS= ...]   - Dry run with a diff, changes nothing"
+	@echo "  make deploy ENV=<env> [CONFIRM=apply-<env>] - Apply for real (protected envs need CONFIRM)"
+	@echo "  make vault-init ENV=<env>                 - Create the encrypted vault.yml of an environment"
+	@echo "  make vault-edit ENV=<env>                 - Edit the encrypted vault.yml of an environment"
+	@echo ""
+	@echo "Environments: $(ENVIRONMENTS)"

@@ -1,0 +1,17 @@
+---
+# The images publish only a moving `latest` tag, so they are pinned by digest. Bump the digests on a schedule to pick up security fixes.
+driver:
+  name: docker
+platforms:
+  - name: ubuntu2404
+    image: geerlingguy/docker-ubuntu2404-ansible:latest@sha256:bbf48c50bf652d059118ba025663055ca64f550adaa13405021f418d52a52a84
+    pre_build_image: true
+    privileged: true
+    command: ""
+  - name: debian12
+    image: geerlingguy/docker-debian12-ansible:latest@sha256:43b3f59882ccc0ba5deb3b3ecac727084bb082a3230b5258c500395694b5497f
+    pre_build_image: true
+    privileged: true
+    command: ""
+provisioner:
+  name: ansible

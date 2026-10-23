@@ -1,0 +1,51 @@
+# AGENTS.md
+
+## Project overview
+
+@@description@@
+
+Stack: Ansible (`ansible-core`) managed with `uv`, `ansible-lint` (production profile), `yamllint`, Molecule for role tests, Make for commands. Environments: @@environments_text@@. Hosts are reached @@connection_text@@.
+
+## Working rules
+
+- Read `README.md` first for setup and the command list.
+- Match the shape of `roles/base` and `playbooks/base.yml` before inventing a new pattern.
+- Prefer small, reviewable changes. Keep environment-specific values in `inventories/<env>/`, never in a role.
+- Do not add a Make target or script when an existing one covers the workflow.
+
+## Commands
+
+- Install: `make install`
+- Lint: `make lint`, then `make syntax`
+- Test roles: `make test` (needs Docker)
+- Dry run: `make check ENV=<env>`
+- Full list: `make help`
+
+## Project structure
+
+@@structure@@
+
+## Conventions
+
+- Playbooks are lists of roles. Logic lives in roles. One playbook per host type, imported from `playbooks/site.yml`.
+- Fully qualified module names (`ansible.builtin.copy`). Every task and play has a capitalized `name`.
+- Role variables are prefixed with the role name. Tunables live in `defaults/main.yml`, internal values in `vars/main.yml`.
+- Prefer a module over `command` or `shell`. A `command` task needs `creates`, `removes` or `changed_when`.
+- Every role must pass `make test`, including the idempotence check, and work under `--check`.
+- Inventory is a directory per environment. Always pass `-i inventories/<env>`.
+- Commits follow `.github/commit_template.md`. Fill out `.github/pull_request_template.md`, including the rollback plan.
+
+## Testing and validation
+
+Before finishing a change, `make lint` and `make syntax` must pass, and `make test` must pass for each changed role. Fix the cause of a finding. Do not add a rule to `skip_list` to get a change through.
+
+## Boundaries
+
+- Do not run `ansible-playbook`, `make check`, `make deploy` or any apply workflow unless the user explicitly asks. Production needs a recorded change plan first.
+- For production, always check first (`make check`), review the diff, then apply with the user's confirmation. Never skip the check.
+- Ask before changing `inventories/production/` or production playbooks.
+- Tasks that write secrets into files set `no_log: true` and `diff: false`.
+- Never decrypt, view or print vault files, and never read `~/.vault/`. Never put a secret in plain text in any file, log, commit or chat. Stop and tell the user if you find one.
+- Do not add users, keys or access methods without explicit approval.
+- Do not store PII in this repository.
+- Ask for clarification when a missing decision blocks safe progress instead of guessing.

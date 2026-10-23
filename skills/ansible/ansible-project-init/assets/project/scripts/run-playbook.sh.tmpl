@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Single entry point that runs a playbook against one environment. The Makefile and the GitHub workflows both call it, so input validation lives in one place.
+# Reads its inputs from environment variables, never from the command line, so CI can pass untrusted workflow inputs without shell interpolation.
+#   ENVIRONMENT  required, a directory name under inventories/
+#   MODE         required, check (dry run with a diff) or apply
+#   PLAYBOOK     optional, path under playbooks/ (default: playbooks/site.yml)
+#   LIMIT, TAGS, SKIP_TAGS  optional
+#   VAULT_DIR    optional, where vault password files live (default: ~/.vault)
+set -euo pipefail
+
+project="@@name@@"
+environment="${ENVIRONMENT:?ENVIRONMENT is required}"
+mode="${MODE:?MODE is required (check or apply)}"
+playbook="${PLAYBOOK:-playbooks/site.yml}"
+limit="${LIMIT:-}"
+tags="${TAGS:-}"
+skip_tags="${SKIP_TAGS:-}"
+
+fail() {
+    echo "error: $*" >&2
+    exit 1
+}
+
+[[ "${environment}" =~ ^[a-z][a-z0-9]*$ ]] || fail "ENVIRONMENT must be lowercase letters and digits"
+[ -d "inventories/${environment}" ] || fail "no inventory directory inventories/${environment}"
+[[ "${mode}" == "check" || "${mode}" == "apply" ]] || fail "MODE must be check or apply"
+[[ "${playbook}" =~ ^playbooks/[A-Za-z0-9_./-]+\.yml$ && "${playbook}" != *..* ]] || fail "PLAYBOOK must be a .yml path under playbooks/"
+[ -f "${playbook}" ] || fail "playbook ${playbook} does not exist"
+[[ -z "${limit}" || "${limit}" =~ ^[A-Za-z0-9_.,:*!@\&-]+$ ]] || fail "LIMIT has characters outside A-Z a-z 0-9 _ . , : * ! @ & -"
+[[ -z "${tags}" || "${tags}" =~ ^[A-Za-z0-9_,-]+$ ]] || fail "TAGS must be comma-separated tag names"
+[[ -z "${skip_tags}" || "${skip_tags}" =~ ^[A-Za-z0-9_,-]+$ ]] || fail "SKIP_TAGS must be comma-separated tag names"
+
+args=(-i "inventories/${environment}" "${playbook}" --diff)
+[ "${mode}" = "check" ] && args+=(--check)
+[ -n "${limit}" ] && args+=(--limit "${limit}")
+[ -n "${tags}" ] && args+=(--tags "${tags}")
+[ -n "${skip_tags}" ] && args+=(--skip-tags "${skip_tags}")
+
+# The vault password file is optional: a repository with no vault.yml yet needs none.
+password_file="${VAULT_DIR:-${HOME}/.vault}/${project}_${environment}"
+if [ -f "${password_file}" ]; then
+    export ANSIBLE_VAULT_PASSWORD_FILE="${password_file}"
+fi
+
+echo "==> ${mode} ${playbook} on ${environment}" >&2
+exec ansible-playbook "${args[@]}"

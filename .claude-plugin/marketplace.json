@@ -5,6 +5,11 @@
   },
   "plugins": [
     {
+      "name": "ansible",
+      "source": "./plugins/ansible",
+      "description": "Ansible automation knowledge: code style, roles and playbooks, inventory and variables, vault secrets, testing, safe deploys and new-project scaffolding."
+    },
+    {
       "name": "authoring",
       "source": "./plugins/authoring",
       "description": "Guidance for writing, reviewing and testing agent skills."

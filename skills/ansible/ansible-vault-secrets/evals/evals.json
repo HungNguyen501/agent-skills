@@ -1,0 +1,53 @@
+[
+  {
+    "id": "encrypt-new-secret",
+    "skills": [
+      "ansible-vault-secrets"
+    ],
+    "query": "I need to add a database password to the production group vars.",
+    "files": [],
+    "expected_behavior": [
+      "Puts the value in the encrypted vault.yml under a vault_ name and references it from vars.yml",
+      "Uses ansible-vault encrypt_string or edit, never writes plaintext to a file",
+      "Does not print the secret in chat or debug tasks",
+      "Uses a per-environment vault password stored outside the repo"
+    ]
+  },
+  {
+    "id": "plaintext-found",
+    "skills": [
+      "ansible-vault-secrets"
+    ],
+    "query": "I found AWS keys in plaintext in group_vars/all/vars.yml. What now?",
+    "files": [],
+    "expected_behavior": [
+      "Stops and treats the keys as compromised: rotate them first",
+      "Moves replacements into vault and notes git history still holds the old value",
+      "Adds secret scanning to pre-commit and CI"
+    ]
+  },
+  {
+    "id": "ci-vault",
+    "skills": [
+      "ansible-vault-secrets"
+    ],
+    "query": "How should GitHub Actions get the vault password and cloud credentials?",
+    "files": [],
+    "expected_behavior": [
+      "Stores the vault password as an environment secret and writes it to a temp file with mode 600, removed after",
+      "Uses OIDC for cloud credentials instead of long-lived keys",
+      "Sets no_log on tasks that handle secrets and never echoes secrets in workflow logs"
+    ]
+  },
+  {
+    "id": "red-herring-style",
+    "skills": [
+      "ansible-vault-secrets"
+    ],
+    "query": "What case should task names use?",
+    "files": [],
+    "expected_behavior": [
+      "Does not apply the vault workflow"
+    ]
+  }
+]

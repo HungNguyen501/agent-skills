@@ -1,0 +1,55 @@
+[
+  {
+    "id": "review-sloppy-tasks",
+    "skills": [
+      "ansible-code-style"
+    ],
+    "query": "Review this task file: tasks use `apt:` and `shell: systemctl restart nginx`, names are lowercase like `install stuff`, variables are called `port` and `pkgs`, and a debug task prints a db password.",
+    "files": [],
+    "expected_behavior": [
+      "Requires fully qualified collection names such as ansible.builtin.apt",
+      "Flags shell for service restart and recommends ansible.builtin.service or a handler",
+      "Asks for names that start with a capital letter and say what the task does",
+      "Asks for role-prefixed variable names",
+      "Flags the debug of a secret and asks for no_log or removal"
+    ]
+  },
+  {
+    "id": "write-idempotent-command",
+    "skills": [
+      "ansible-code-style"
+    ],
+    "query": "I need a task that runs `/opt/app/bin/migrate` once after deploy. How should I write it?",
+    "files": [],
+    "expected_behavior": [
+      "Uses ansible.builtin.command, not shell, unless shell features are needed",
+      "Adds creates or removes, or changed_when and failed_when, so the task reports honestly",
+      "Notes the task must behave under --check (check_mode or when guard)"
+    ]
+  },
+  {
+    "id": "yaml-formatting",
+    "skills": [
+      "ansible-code-style"
+    ],
+    "query": "What YAML and Jinja2 style rules should our playbooks follow?",
+    "files": [],
+    "expected_behavior": [
+      "Two-space indentation, .yml extension, true/false booleans",
+      "Jinja2 expressions with single spaces inside braces and filters, no logic-heavy templates",
+      "Quotes only where needed and always for values starting with a template or special characters"
+    ]
+  },
+  {
+    "id": "red-herring-python",
+    "skills": [
+      "ansible-code-style"
+    ],
+    "query": "Add type hints to our custom Ansible module in plugins/modules/.",
+    "files": [],
+    "expected_behavior": [
+      "Does not apply the playbook style checklist",
+      "Treats the request as Python module work"
+    ]
+  }
+]

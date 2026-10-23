@@ -1,0 +1,16 @@
+---
+argument_specs:
+  main:
+    short_description: Baseline packages and login banner
+    options:
+      base_packages:
+        type: list
+        elements: str
+        default:
+          - ca-certificates
+          - curl
+        description: Packages installed on every host.
+      base_motd_banner:
+        type: str
+        default: Managed by Ansible. Manual changes will be overwritten.
+        description: Text of /etc/motd.

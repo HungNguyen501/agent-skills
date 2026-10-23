@@ -1,0 +1,6 @@
+{
+  "name": "ansible",
+  "description": "Ansible automation knowledge: code style, roles and playbooks, inventory and variables, vault secrets, testing, safe deploys and new-project scaffolding.",
+  "version": "0.1.0",
+  "license": "Apache-2.0"
+}

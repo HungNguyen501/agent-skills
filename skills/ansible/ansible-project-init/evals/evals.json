@@ -1,0 +1,67 @@
+[
+  {
+    "id": "new-repo-two-envs",
+    "skills": [
+      "ansible-project-init"
+    ],
+    "query": "Initialize a new Ansible repo called edge-platform in ~/work/edge-platform for staging and production, hosts reached over SSH.",
+    "files": [],
+    "expected_behavior": [
+      "Collects or defaults name edge-platform, environments staging and production, connection ssh",
+      "Runs scripts/init_project.py without --apply first and shows the plan before applying",
+      "Result has ansible.cfg, pyproject.toml, requirements.yml, Makefile, .ansible-lint, .yamllint, inventories/<env>/ for each environment, playbooks/site.yml, an example role with molecule scenario, .github/workflows and AGENTS.md",
+      "After applying, installs every skill under skills/ansible/ except ansible-project-init with /scaffold-repo claude (dry run first)",
+      "Runs make install, make lint and make syntax in the new repo and reports the results"
+    ]
+  },
+  {
+    "id": "ssm-connection",
+    "skills": [
+      "ansible-project-init"
+    ],
+    "query": "Bootstrap an Ansible repo data-infra where EC2 hosts are reached through AWS SSM, no SSH keys.",
+    "files": [],
+    "expected_behavior": [
+      "Chooses --connection ssm",
+      "Generated inventory group_vars set ansible_connection to community.aws.aws_ssm and requirements.yml lists community.aws and amazon.aws",
+      "Deploy workflows authenticate with AWS OIDC, not stored access keys"
+    ]
+  },
+  {
+    "id": "existing-files-conflict",
+    "skills": [
+      "ansible-project-init"
+    ],
+    "query": "Run the ansible project init in ~/work/legacy-ansible where ansible.cfg and a roles/ folder already exist.",
+    "files": [],
+    "expected_behavior": [
+      "Dry run reports the existing files as conflicts and writes nothing",
+      "Does not overwrite or delete files and does not invent a force option",
+      "Asks how to proceed, for example another directory or merging by hand"
+    ]
+  },
+  {
+    "id": "not-this-skill",
+    "skills": [
+      "ansible-project-init"
+    ],
+    "query": "Add a new nginx role to my existing Ansible repo.",
+    "files": [],
+    "expected_behavior": [
+      "Does not use ansible-project-init because the repo already exists",
+      "Uses the role conventions of the existing repo instead of scaffolding a new project"
+    ]
+  },
+  {
+    "id": "verify-failure",
+    "skills": [
+      "ansible-project-init"
+    ],
+    "query": "After init, make lint fails in the new Ansible repo.",
+    "files": [],
+    "expected_behavior": [
+      "Reads the lint output and fixes the cause in the generated files instead of adding the rule to skip_list",
+      "Re-runs make lint and make syntax until both pass and reports what changed"
+    ]
+  }
+]

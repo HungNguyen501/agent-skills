@@ -1,0 +1,11 @@
+# No default inventory on purpose: every run names one with -i inventories/<env>, so a forgotten flag fails instead of hitting the wrong hosts.
+[defaults]
+roles_path = roles
+collections_path = .ansible/collections
+retry_files_enabled = False
+nocows = True
+interpreter_python = auto_silent
+callback_result_format = yaml
+
+[ssh_connection]
+pipelining = True

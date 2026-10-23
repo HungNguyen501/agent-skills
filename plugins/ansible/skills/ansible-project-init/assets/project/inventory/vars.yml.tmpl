@@ -1,0 +1,5 @@
+---
+# Plaintext, non-sensitive settings of the @@env@@ environment. They override role defaults for every host of this environment.
+# Secrets live in vault.yml under vault_* names and are aliased here, so a grep shows where they are used:
+#   app_db_password: "{{ vault_app_db_password }}"
+base_motd_banner: Managed by Ansible (@@env@@). Manual changes will be overwritten.

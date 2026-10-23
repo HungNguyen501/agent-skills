@@ -1,0 +1,56 @@
+[
+  {
+    "id": "new-role",
+    "skills": [
+      "ansible-roles-playbooks"
+    ],
+    "query": "Create a role that installs and configures chrony on Debian and RHEL hosts.",
+    "files": [],
+    "expected_behavior": [
+      "Role name uses lowercase and underscores",
+      "Tunable values live in defaults/main.yml with a role-name prefix, constants in vars/",
+      "Uses per-OS vars files or tasks selected by ansible_facts, not a long chain of when conditions",
+      "Adds meta/argument_specs.yml for input validation and a README documenting variables",
+      "Handlers restart or reload the service, not tasks"
+    ]
+  },
+  {
+    "id": "playbook-structure",
+    "skills": [
+      "ansible-roles-playbooks"
+    ],
+    "query": "Our site.yml has 400 lines of tasks and numbered playbooks 01-db.yml 02-web.yml. How do we restructure?",
+    "files": [],
+    "expected_behavior": [
+      "Applies the landscape, type, function, component pattern: one playbook per host type",
+      "Moves task logic into roles and keeps playbooks as a list of roles",
+      "Removes numbered ordering instructions by importing type playbooks from site.yml",
+      "Does not mix roles: and tasks: in one play"
+    ]
+  },
+  {
+    "id": "tags-and-roles",
+    "skills": [
+      "ansible-roles-playbooks"
+    ],
+    "query": "Where should we put tags and how many?",
+    "files": [],
+    "expected_behavior": [
+      "Uses tags named after roles or after a meaningful purpose",
+      "Warns against tags that are destructive or unusable on their own",
+      "Documents the tags"
+    ]
+  },
+  {
+    "id": "red-herring-inventory",
+    "skills": [
+      "ansible-roles-playbooks"
+    ],
+    "query": "Where do I put the staging database host IP?",
+    "files": [],
+    "expected_behavior": [
+      "Does not apply the role structure workflow",
+      "Points to inventory and group_vars instead"
+    ]
+  }
+]

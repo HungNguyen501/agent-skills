@@ -1,0 +1,10 @@
+- name: Configure SSH access
+  shell: bash
+  run: |
+    set -euo pipefail
+    install -d -m 700 "${HOME}/.ssh"
+    (umask 077 && printf '%s\n' "${SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519")
+    printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${HOME}/.ssh/known_hosts"
+  env:
+    SSH_PRIVATE_KEY: ${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}
+    SSH_KNOWN_HOSTS: ${{ secrets.ANSIBLE_SSH_KNOWN_HOSTS }}
