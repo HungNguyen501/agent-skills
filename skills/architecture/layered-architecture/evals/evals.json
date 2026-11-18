@@ -1,0 +1,123 @@
+[
+  {
+    "id": "new-repo-layout",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "I'm starting a new Python backend repo for an e-commerce service with orders, billing and user accounts, real business rules like discounts and refunds. How should I structure the folders and modules?",
+    "files": [],
+    "expected_behavior": [
+      "Proposes a concrete directory tree with a top-level module per feature (orders, billing, users) and layers inside each",
+      "Names the layers and what each holds (presentation, application, domain, infrastructure) and the dependency direction between them",
+      "Includes a small shared module with no business rules and a single composition root or entry point",
+      "Says features use each other through application entry points, not by importing another feature's domain or infrastructure",
+      "Recommends adding an architecture test or import rule at the start"
+    ]
+  },
+  {
+    "id": "crud-tool-overlayering",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "I'm building a small internal admin tool, 4 tables, plain CRUD, one developer. Set it up with controller, service, repository, domain model and DTO layers for every table so it is properly layered.",
+    "files": [],
+    "expected_behavior": [
+      "Pushes back on five layers for plain CRUD and recommends fewer layers (for example handlers plus data access)",
+      "Says a layer whose methods only forward a call to the next layer adds cost and no value",
+      "Gives a condition for adding a layer later, such as business rules appearing that do not fit in a handler"
+    ]
+  },
+  {
+    "id": "dependency-direction-violation",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "Review the layering:\n\n# domain/order.py\nfrom sqlalchemy.orm import Session\nfrom api.schemas import OrderRequest\n\nclass Order:\n    def place(self, session: Session, req: OrderRequest):\n        session.add(self)\n        session.commit()",
+    "files": [],
+    "expected_behavior": [
+      "Flags the domain layer importing the ORM session (infrastructure) and the request schema (presentation) as inward-dependency violations",
+      "Proposes an interface (port) owned by the domain or application layer, implemented in infrastructure",
+      "Moves the commit out of the domain object to the application layer's use case",
+      "Gives a concrete fix, not a general remark"
+    ]
+  },
+  {
+    "id": "logic-in-controller",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "Is this endpoint structured right?\n\n@app.post('/checkout')\ndef checkout(req):\n    cart = db.query(Cart).get(req.cart_id)\n    total = sum(i.price * i.qty for i in cart.items)\n    if cart.user.tier == 'gold':\n        total *= 0.9\n    db.add(Payment(cart_id=cart.id, amount=total))\n    db.commit()\n    return {'total': total}",
+    "files": [],
+    "expected_behavior": [
+      "Identifies the discount rule as business logic that belongs in the domain layer",
+      "Identifies the query, orchestration and commit as use-case work for the application layer",
+      "Leaves the endpoint to parse input, call one use case and map the result to a response",
+      "Does not introduce extra layers beyond what this example needs"
+    ]
+  },
+  {
+    "id": "orm-entity-in-api-response",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "Our GET /users/{id} returns the SQLAlchemy User model directly. It works, and it is less code. Why would we change it?",
+    "files": [],
+    "expected_behavior": [
+      "Explains that this couples the API contract to the persistence schema, so a column change breaks clients and can leak fields",
+      "Recommends a response DTO mapped at the presentation boundary",
+      "Acknowledges the trade-off: in a small CRUD service one shared model can be an acceptable, explicit choice"
+    ]
+  },
+  {
+    "id": "tiers-vs-layers",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "Our architecture doc says we run a 3-tier architecture: browser, app server, database. So does our Java code need exactly three layers, one per tier?",
+    "files": [],
+    "expected_behavior": [
+      "Distinguishes physical tiers (deployment units) from logical layers (code organization inside a tier)",
+      "Says the number of code layers does not follow from the number of tiers",
+      "Describes the layers that fit inside the app-server tier and their dependency direction"
+    ]
+  },
+  {
+    "id": "enforce-over-time",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "We agreed on layers last quarter, but new PRs keep importing the database module from the API handlers. How do we stop this from coming back?",
+    "files": [],
+    "expected_behavior": [
+      "Recommends an automated architecture rule that fails CI, not documentation or review discipline alone",
+      "Names a tool that fits the stack in use (for example import-linter, ArchUnit, dependency-cruiser) or says how to choose one",
+      "For existing violations, suggests freezing or allow-listing them so the rule blocks only new ones"
+    ]
+  },
+  {
+    "id": "error-and-transaction-placement",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "Where should the DB transaction start and end, and where should we catch the database's unique-constraint error and turn it into a 409?",
+    "files": [],
+    "expected_behavior": [
+      "Places the transaction boundary in the application layer, one per use case, with repositories not committing",
+      "Has infrastructure translate the driver error into an error the inner layers understand",
+      "Has the presentation layer map that error to HTTP 409",
+      "Does not let a database exception type travel through the application or domain layers"
+    ]
+  },
+  {
+    "id": "redherring-service-boundaries",
+    "skills": [
+      "layered-architecture"
+    ],
+    "query": "We want to break our monolith into microservices. Which bounded contexts should become their own services and how should they communicate?",
+    "files": [],
+    "expected_behavior": [
+      "Does not answer by applying layer rules (presentation, application, domain, infrastructure) to service boundaries",
+      "Treats service decomposition as a separate question from layering inside a service"
+    ]
+  }
+]
