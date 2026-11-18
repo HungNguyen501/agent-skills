@@ -10,6 +10,11 @@
       "description": "Ansible automation knowledge: code style, roles and playbooks, inventory and variables, vault secrets, testing, safe deploys and new-project scaffolding."
     },
     {
+      "name": "architecture",
+      "source": "./plugins/architecture",
+      "description": "Software architecture knowledge: layered architecture, layer responsibilities, dependency rules and how to enforce them."
+    },
+    {
       "name": "authoring",
       "source": "./plugins/authoring",
       "description": "Guidance for writing, reviewing and testing agent skills."

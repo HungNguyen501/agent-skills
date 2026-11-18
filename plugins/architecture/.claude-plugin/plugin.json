@@ -1,0 +1,6 @@
+{
+  "name": "architecture",
+  "description": "Software architecture knowledge: layered architecture, layer responsibilities, dependency rules and how to enforce them.",
+  "version": "0.1.0",
+  "license": "Apache-2.0"
+}

@@ -1,5 +1,6 @@
 {
   "ansible": "Ansible automation knowledge: code style, roles and playbooks, inventory and variables, vault secrets, testing, safe deploys and new-project scaffolding.",
+  "architecture": "Software architecture knowledge: layered architecture, layer responsibilities, dependency rules and how to enforce them.",
   "authoring": "Guidance for writing, reviewing and testing agent skills.",
   "databricks": "Databricks system-table, metric-view and cost knowledge for data-platform assistants.",
   "python": "Python conventions and project setup: code style, docstrings, unit tests and new-project scaffolding.",
